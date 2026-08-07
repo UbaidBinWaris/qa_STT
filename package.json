@@ -1,0 +1,20 @@
+{
+  "name": "qa-stt-nvidia-parakeet",
+  "version": "1.0.0",
+  "description": "Independent NVIDIA Parakeet TDT STT Server and Live Real-Time Web Application",
+  "main": "server/start_server.py",
+  "scripts": {
+    "dev": "python3 server/start_server.py",
+    "start": "python3 server/start_server.py"
+  },
+  "keywords": [
+    "nvidia",
+    "parakeet",
+    "stt",
+    "speech-to-text",
+    "real-time",
+    "tdt"
+  ],
+  "author": "",
+  "license": "MIT"
+}
