@@ -1,53 +1,41 @@
 #!/usr/bin/env python3
 import os
-import sys
 import subprocess
-import time
+import sys
 
-def setup_virtualenv_and_install():
-    print("==========================================================")
-    print(" Checking Virtual Environment & Dependencies for STT Server")
-    print("==========================================================")
-    
-    server_dir = os.path.dirname(os.path.abspath(__file__))
-    venv_dir = os.path.join(server_dir, "venv")
-    venv_python = os.path.join(venv_dir, "bin", "python")
-    venv_pip = os.path.join(venv_dir, "bin", "pip")
+SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+VENV_DIR = os.path.join(SERVER_DIR, "venv")
+VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python")
 
-    # Create virtual environment if it doesn't exist
-    if not os.path.exists(venv_dir):
-        print(f"Creating virtual environment in: {venv_dir}")
-        subprocess.check_call([sys.executable, "-m", "venv", venv_dir])
-    
-    # If running outside the venv, re-execute script inside the virtual environment
-    if sys.executable != venv_python and os.path.exists(venv_python):
-        print("Re-executing startup script inside virtual environment...")
-        requirements_file = os.path.join(server_dir, "requirements.txt")
-        
-        # Install requirements inside venv
-        print("Installing/verifying dependencies in virtual environment...")
-        try:
-            subprocess.check_call([venv_pip, "install", "--upgrade", "pip", "setuptools", "wheel"])
-            subprocess.check_call([venv_pip, "install", "-r", requirements_file])
-            print("Dependencies successfully installed in virtual environment!")
-        except Exception as e:
-            print(f"Notice during dependency installation: {e}")
-            
-        os.execv(venv_python, [venv_python] + sys.argv)
+
+def bootstrap():
+    if not os.path.exists(VENV_DIR):
+        print(f"Creating virtual environment in {VENV_DIR}")
+        subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
+
+    if os.path.abspath(sys.executable) == os.path.abspath(VENV_PYTHON):
+        return
+
+    print("Installing dependencies...")
+    subprocess.check_call([VENV_PYTHON, "-m", "pip", "install", "--upgrade", "-q",
+                           "pip", "setuptools", "wheel"])
+    subprocess.check_call([VENV_PYTHON, "-m", "pip", "install", "-r",
+                           os.path.join(SERVER_DIR, "requirements.txt")])
+    os.execv(VENV_PYTHON, [VENV_PYTHON] + sys.argv)
+
 
 def main():
-    setup_virtualenv_and_install()
-    
-    print("\n==========================================================")
-    print(" Starting NVIDIA Parakeet STT Server & Model Warmup")
-    print(" Endpoint: http://localhost:8000")
-    print("==========================================================\n")
-    
-    server_dir = os.path.dirname(os.path.abspath(__file__))
-    os.chdir(server_dir)
-    
+    bootstrap()
+    os.chdir(SERVER_DIR)
+    # Keep model downloads inside the repo.
+    os.environ.setdefault("HF_HOME", os.path.join(SERVER_DIR, "models_cache"))
+    os.environ.setdefault("TORCH_HOME", os.path.join(SERVER_DIR, "models_cache"))
+
+    print("\nSales Call QA — http://localhost:8000\n")
     import uvicorn
+
     uvicorn.run("app:app", host="0.0.0.0", port=8000, log_level="info")
+
 
 if __name__ == "__main__":
     main()

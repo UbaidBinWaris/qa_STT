@@ -3,122 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NVIDIA Parakeet STT - Live Real-Time Speech Recognition</title>
+    <title>Call QA — Speech Intelligence</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- Header -->
-        <header class="navbar">
-            <div class="brand">
-                <div class="nvidia-badge">NVIDIA</div>
-                <div class="brand-title">Parakeet TDT 1.1B <span>STT Live</span></div>
+<div class="app-container">
+    <header class="navbar">
+        <div class="brand">
+            <div class="nvidia-badge">QA</div>
+            <div class="brand-title">Sales Call <span>Intelligence</span></div>
+        </div>
+        <div class="status-indicator" id="statusIndicator">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-text" id="statusText">Connecting…</span>
+        </div>
+    </header>
+
+    <main class="layout">
+        <aside class="sidebar glass-panel">
+            <div class="dropzone" id="dropzone">
+                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p>Drop call recordings<br><span>or click to browse</span></p>
+                <input type="file" id="fileInput" accept="audio/*" multiple hidden>
             </div>
-            <div class="status-indicator" id="statusIndicator">
-                <span class="status-dot green"></span>
-                <span class="status-text" id="statusText">Model Warmed Up & Ready</span>
+
+            <div class="search-box">
+                <input type="search" id="searchInput" placeholder="Search all transcripts…">
             </div>
-        </header>
 
-        <!-- Main Content Layout -->
-        <main class="dashboard">
-            <!-- Left Panel: Controls & Audio Waveform -->
-            <section class="control-card glass-panel">
-                <h2>Audio Processing</h2>
-                <p class="subtitle">Record live audio or drop audio files to process live text</p>
+            <div class="call-list" id="callList"></div>
+        </aside>
 
-                <!-- Recording Controls -->
-                <div class="recording-section">
-                    <button id="recordBtn" class="primary-btn pulse-glow">
-                        <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                            <line x1="12" y1="19" x2="12" y2="23"/>
-                            <line x1="8" y1="23" x2="16" y2="23"/>
-                        </svg>
-                        <span id="recordBtnText">Start Live Microphone</span>
-                    </button>
-                    <div id="recordingTimer" class="timer hidden">00:00</div>
-                </div>
+        <section class="detail" id="detail">
+            <div class="empty-state" id="emptyState">
+                <h2>No call selected</h2>
+                <p>Upload a recording or pick one from the list.</p>
+            </div>
 
-                <!-- Waveform Canvas -->
-                <div class="waveform-box">
-                    <canvas id="waveformCanvas" width="450" height="90"></canvas>
-                </div>
-
-                <div class="divider"><span>OR UPLOAD FILE</span></div>
-
-                <!-- File Dropzone -->
-                <div class="dropzone" id="dropzone">
-                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="17 8 12 3 7 8"/>
-                        <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    <p class="drop-title">Drop Audio File Here</p>
-                    <p class="drop-sub">Supports WAV, MP3, FLAC, M4A, OGG</p>
-                    <input type="file" id="fileInput" accept="audio/*" class="hidden-input">
-                </div>
-
-                <!-- Model Info Card -->
-                <div class="model-info-box">
-                    <div class="info-row">
-                        <span>Architecture:</span>
-                        <strong>NVIDIA Parakeet-TDT-1.1B</strong>
+            <div class="detail-body hidden" id="detailBody">
+                <div class="detail-header glass-panel">
+                    <div>
+                        <h2 id="callTitle">—</h2>
+                        <div class="meta" id="callMeta"></div>
                     </div>
-                    <div class="info-row">
-                        <span>Accuracy Benchmark:</span>
-                        <strong class="green-text">Top-Tier WER (64.9% vs Whisper)</strong>
-                    </div>
-                    <div class="info-row">
-                        <span>Processing Latency:</span>
-                        <strong>Real-Time Low Latency (~120ms)</strong>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Right Panel: Live View-Only Text Stream Display -->
-            <section class="display-card glass-panel">
-                <div class="display-header">
-                    <div class="title-wrap">
-                        <h2>Live Transcription</h2>
-                        <span class="live-tag blink">LIVE</span>
-                    </div>
-                    <div class="action-buttons">
-                        <button id="copyBtn" class="secondary-btn" title="Copy Text">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                            </svg>
-                            Copy
-                        </button>
-                        <button id="clearBtn" class="secondary-btn" title="Clear Display">Clear</button>
+                    <div class="score-badge hidden" id="scoreBadge">
+                        <span class="score-value" id="scoreValue">–</span>
+                        <span class="score-label">QA Score</span>
                     </div>
                 </div>
 
-                <!-- Live Stream Output View -->
-                <div class="transcript-viewport" id="transcriptViewport">
-                    <div class="placeholder-text" id="placeholderText">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M12 2v20M17 5v14M22 8v8M7 5v14M2 8v8"/>
-                        </svg>
-                        <p>Text will generate live on screen here as audio is processed...</p>
-                    </div>
-                    <div id="transcriptOutput" class="transcript-text"></div>
+                <audio id="player" controls preload="metadata"></audio>
+
+                <div class="progress-panel glass-panel hidden" id="progressPanel">
+                    <div class="progress-label"><span id="progressStage">queued</span><span id="progressPct">0%</span></div>
+                    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
                 </div>
 
-                <div class="stats-footer">
-                    <div>Words Generated: <span id="wordCount">0</span></div>
-                    <div>Audio Duration: <span id="audioDuration">0.0s</span></div>
-                    <div class="mode-indicator">Mode: <span id="modeText">View-Only</span></div>
+                <div class="tabs">
+                    <button class="tab active" data-tab="transcript">Transcript</button>
+                    <button class="tab" data-tab="qa">QA Analysis</button>
+                    <button class="tab" data-tab="metrics">Metrics</button>
                 </div>
-            </section>
-        </main>
-    </div>
 
-    <script src="app.js"></script>
+                <div class="tab-panel glass-panel" id="panel-transcript"></div>
+                <div class="tab-panel glass-panel hidden" id="panel-qa"></div>
+                <div class="tab-panel glass-panel hidden" id="panel-metrics"></div>
+            </div>
+        </section>
+    </main>
+</div>
+<script src="app.js"></script>
 </body>
 </html>

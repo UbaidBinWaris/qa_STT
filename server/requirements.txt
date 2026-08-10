@@ -1,12 +1,23 @@
 fastapi>=0.110.0
 uvicorn[standard]>=0.28.0
-websockets>=12.0
 python-multipart>=0.0.9
+requests
+
+# Speech models (NVIDIA NeMo). Parakeet TDT v3 + Sortformer diarization.
+nemo-toolkit[asr]>=2.5.0
 torch
 torchaudio
-transformers>=4.38.0
-accelerate>=0.27.0
+
 librosa>=0.10.1
 soundfile>=0.12.1
-numpy
-requests
+
+# Pins required for NeMo 2.5 to import on this Python 3.14 / torch 2.13 stack.
+# protobuf: NeMo requests ~=5.29.5, but the installed onnx gencode needs >=5.31.
+# ml_dtypes: onnx imports float4_e2m1fn, absent from older releases.
+# numpy: numba (a NeMo RNNT dependency) refuses NumPy >= 2.5.
+protobuf>=5.31.1
+ml_dtypes>=0.5.1
+numpy>=2.1,<2.5
+
+# Enables CUDA graph decoding in the TDT decoder (meaningful ASR speedup).
+cuda-python>=12.3

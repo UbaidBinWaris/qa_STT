@@ -1,20 +1,31 @@
-import os
-import sys
-import io
-import logging
 import asyncio
-import numpy as np
-import soundfile as sf
-from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
+import logging
+import os
+import shutil
+
+# Keep model weights inside the repo. Must precede any HF/NeMo import.
+_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models_cache")
+os.environ.setdefault("HF_HOME", _CACHE)
+os.environ.setdefault("TORCH_HOME", _CACHE)
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
-from stt_engine import stt_engine
 
-logger = logging.getLogger("ParakeetApp")
+import db
+import jobs
+from pipeline import asr, diarize, qa
 
-app = FastAPI(title="NVIDIA Parakeet STT Server", version="1.0.0")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("app")
 
+SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(SERVER_DIR, "uploads")
+ALLOWED_EXT = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".webm", ".aac"}
+
+app = FastAPI(title="Sales Call QA — Speech Intelligence", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,77 +34,140 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
-async def startup_event():
-    logger.info("Initializing FastAPI Backend Server for NVIDIA Parakeet STT...")
-    # Trigger STT engine loading and warm-up
+async def startup():
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    db.init()
+    db.reset_stuck_jobs()
+    jobs.start()
+
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, stt_engine.warmup)
+    await loop.run_in_executor(None, _warm)
+
+    for call_id in db.pending_call_ids():
+        jobs.submit(call_id)
+
+
+def _warm():
+    logger.info("Loading speech models onto GPU...")
+    asr.load()
+    diarize.load()
+    logger.info("Models resident and ready.")
+
 
 @app.get("/api/health")
-def health_check():
+def health():
+    import torch
+
     return {
         "status": "healthy",
-        "model": stt_engine.model_name,
-        "device": stt_engine.device,
-        "warmed_up": stt_engine.is_warmed_up
+        "asr_model": asr.MODEL_ID,
+        "diarization_model": diarize.MODEL_ID,
+        "qa_model": qa.QA_MODEL,
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "vram_used_gb": round(torch.cuda.memory_allocated() / 1e9, 2)
+        if torch.cuda.is_available()
+        else 0,
+        "queue_depth": jobs.depth(),
     }
 
-@app.post("/api/transcribe")
-async def transcribe_file(file: UploadFile = File(...)):
+
+@app.post("/api/calls")
+async def upload_call(file: UploadFile = File(...)):
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXT:
+        raise HTTPException(400, f"Unsupported audio format '{ext}'")
+
+    call_id = db.create_call(file.filename, "")
+    dest = os.path.join(UPLOAD_DIR, f"{call_id}{ext}")
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    db.connect().execute("UPDATE calls SET audio_path=? WHERE id=?", (dest, call_id))
+    db.connect().commit()
+
+    jobs.submit(call_id)
+    logger.info(f"Queued {file.filename} as {call_id}")
+    return {"call_id": call_id, "status": "queued"}
+
+
+@app.get("/api/calls")
+def list_calls():
+    return db.list_calls()
+
+
+@app.get("/api/calls/{call_id}")
+def get_call(call_id: str):
+    call = db.get_call(call_id)
+    if not call:
+        raise HTTPException(404, "Call not found")
+    return {
+        **call,
+        "transcript": db.get_transcript(call_id),
+        "metrics": db.get_metrics(call_id),
+        "qa": db.get_qa(call_id),
+    }
+
+
+@app.get("/api/calls/{call_id}/status")
+def get_status(call_id: str):
+    call = db.get_call(call_id)
+    if not call:
+        raise HTTPException(404, "Call not found")
+    return {
+        "status": call["status"],
+        "stage": call["stage"],
+        "progress": call["progress"],
+        "error": call["error"],
+    }
+
+
+@app.get("/api/calls/{call_id}/audio")
+def get_audio(call_id: str):
+    call = db.get_call(call_id)
+    if not call or not os.path.exists(call["audio_path"]):
+        raise HTTPException(404, "Audio not found")
+    return FileResponse(call["audio_path"], filename=call["filename"])
+
+
+@app.delete("/api/calls/{call_id}")
+def delete_call(call_id: str):
+    call = db.get_call(call_id)
+    if not call:
+        raise HTTPException(404, "Call not found")
+    for path in (call["audio_path"], os.path.join(SERVER_DIR, "outputs", f"{call_id}.wav")):
+        if path and os.path.exists(path):
+            os.remove(path)
+    db.delete_call(call_id)
+    return {"deleted": call_id}
+
+
+@app.post("/api/calls/{call_id}/reprocess")
+def reprocess(call_id: str):
+    if not db.get_call(call_id):
+        raise HTTPException(404, "Call not found")
+    db.set_progress(call_id, "queued", 0)
+    jobs.submit(call_id)
+    return {"call_id": call_id, "status": "queued"}
+
+
+@app.get("/api/search")
+def search(q: str):
+    if not q.strip():
+        return []
     try:
-        content = await file.read()
-        audio_data, sample_rate = sf.read(io.BytesIO(content))
-        
-        # Convert to mono if stereo
-        if len(audio_data.shape) > 1:
-            audio_data = np.mean(audio_data, axis=1)
-
-        # Convert to float32
-        audio_data = audio_data.astype(np.float32)
-
-        transcription = stt_engine.transcribe_numpy_audio(audio_data, sample_rate=sample_rate)
-        return JSONResponse({
-            "success": True,
-            "filename": file.filename,
-            "duration_seconds": round(len(audio_data) / float(sample_rate), 2),
-            "transcription": transcription
-        })
+        return db.search(q)
     except Exception as e:
-        logger.error(f"Transcription error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(400, f"Invalid search query: {e}")
 
-@app.websocket("/ws/transcribe")
-async def websocket_transcribe(websocket: WebSocket):
-    await websocket.accept()
-    logger.info("WebSocket client connected for real-time STT streaming.")
-    try:
-        while True:
-            # Receive audio chunk as bytes
-            data = await websocket.receive_bytes()
-            if not data:
-                continue
-            
-            # Parse raw PCM 16-bit 16kHz audio float array
-            audio_chunk = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-            
-            if len(audio_chunk) > 0:
-                text = stt_engine.transcribe_numpy_audio(audio_chunk, sample_rate=16000)
-                if text:
-                    await websocket.send_json({
-                        "type": "transcription_chunk",
-                        "text": text
-                    })
-    except WebSocketDisconnect:
-        logger.info("WebSocket client disconnected.")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
 
-# Mount static web UI directory
-web_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+web_dir = os.path.join(os.path.dirname(SERVER_DIR), "web")
 if os.path.exists(web_dir):
     app.mount("/", StaticFiles(directory=web_dir, html=True), name="static")
 
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+
+    uvicorn.run("app:app", host="0.0.0.0", port=8000)
