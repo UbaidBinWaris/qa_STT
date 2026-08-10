@@ -9,15 +9,20 @@ os.environ.setdefault("HF_HOME", _CACHE)
 os.environ.setdefault("TORCH_HOME", _CACHE)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-import db
-import jobs
-import warmup
-from pipeline import asr, diarize, qa
+import config
+
+config.load_env()
+
+import auth  # noqa: E402  (must follow load_env so APP_PASSWORD is visible)
+import db  # noqa: E402
+import jobs  # noqa: E402
+import warmup  # noqa: E402
+from pipeline import asr, diarize, qa  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("app")
@@ -27,13 +32,18 @@ UPLOAD_DIR = os.path.join(SERVER_DIR, "uploads")
 ALLOWED_EXT = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".webm", ".aac"}
 
 app = FastAPI(title="Sales Call QA — Speech Intelligence", version="2.0.0")
+
+# Credentialed requests must not be accepted from arbitrary origins — with a
+# password gate and a session cookie, "*" would permit cross-site reads.
+_origins = [o for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins or ["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(auth.middleware)
 
 
 @app.on_event("startup")
@@ -50,6 +60,29 @@ async def startup():
         jobs.submit(call_id)
 
     logger.info("Ready — http://localhost:8000")
+
+
+@app.get("/api/auth-status")
+def auth_status(request: Request):
+    return {
+        "auth_required": auth.enabled(),
+        "authenticated": not auth.enabled()
+        or auth.valid_session(request.cookies.get(auth.COOKIE)),
+    }
+
+
+@app.post("/api/login")
+def do_login(response: Response, payload: dict = Body(...)):
+    return auth.login(response, str(payload.get("password", "")))
+
+
+@app.post("/api/logout")
+def do_logout(response: Response, request: Request):
+    token = request.cookies.get(auth.COOKIE)
+    if token:
+        auth._sessions.pop(token, None)
+    response.delete_cookie(auth.COOKIE, path="/")
+    return {"authenticated": False}
 
 
 @app.get("/api/health")

@@ -73,6 +73,35 @@ npm run stop             # stop the server and release its VRAM
 PORT=8080 npm run dev    # run on a different port
 ```
 
+## Remote access (ngrok)
+
+```bash
+npm run tunnel
+```
+
+Prints a public HTTPS URL and the password. Requires `ngrok` on PATH and a `.env` containing:
+
+```
+NGROK_AUTHTOKEN="..."
+APP_PASSWORD="..."
+```
+
+**Access control.** Authentication activates whenever `APP_PASSWORD` is set, and stays off
+when it isn't — so local use is frictionless while a tunnelled instance is never publicly
+readable. Login issues an HttpOnly session cookie valid for 12 hours; every API route and the
+audio stream require it. `npm run tunnel` refuses to start if the running server has no
+password, rather than exposing recordings by accident.
+
+CORS is restricted to localhost by default because credentialed requests plus `*` would allow
+cross-site reads. Add your tunnel origin to `ALLOWED_ORIGINS` (comma-separated) if you need
+browser clients on other origins.
+
+Ctrl-C closes the tunnel; so does `pkill -f tunnel.py`, since the script traps SIGTERM and
+takes ngrok down with it.
+
+> Call recordings contain customer names, addresses and phone numbers. Share the URL and
+> password privately, and close the tunnel when you are done.
+
 ## API
 
 | Method | Path | Purpose |

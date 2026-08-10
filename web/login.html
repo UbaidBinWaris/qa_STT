@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in — Call QA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="login-body">
+    <form class="login-card glass-panel" id="loginForm">
+        <div class="brand">
+            <div class="nvidia-badge">QA</div>
+            <div class="brand-title">Sales Call <span>Intelligence</span></div>
+        </div>
+        <p class="login-hint">This instance is password protected.</p>
+        <input type="password" id="password" placeholder="Password" autocomplete="current-password" autofocus required>
+        <button type="submit" class="tab active" id="submitBtn">Sign in</button>
+        <p class="login-error hidden" id="error"></p>
+    </form>
+<script>
+const form = document.getElementById("loginForm");
+const err = document.getElementById("error");
+const btn = document.getElementById("submitBtn");
+
+form.onsubmit = async (e) => {
+    e.preventDefault();
+    err.classList.add("hidden");
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    try {
+        const res = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: document.getElementById("password").value }),
+        });
+        if (res.ok) {
+            window.location.href = "/";
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
+        err.textContent = data.detail || "Sign in failed";
+    } catch {
+        err.textContent = "Server unreachable";
+    }
+    err.classList.remove("hidden");
+    btn.disabled = false;
+    btn.textContent = "Sign in";
+    document.getElementById("password").select();
+};
+</script>
+</body>
+</html>

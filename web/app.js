@@ -13,8 +13,25 @@ const fmtTime = (s) => {
 
 async function api(path, opts) {
     const res = await fetch(API + path, opts);
+    if (res.status === 401) {
+        window.location.href = "/login.html";
+        throw new Error("Authentication required");
+    }
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
     return res.json();
+}
+
+async function setupAuth() {
+    const { auth_required } = await api("/api/auth-status");
+    if (!auth_required) return;
+    const btn = document.createElement("button");
+    btn.className = "tab";
+    btn.textContent = "Sign out";
+    btn.onclick = async () => {
+        await api("/api/logout", { method: "POST" });
+        window.location.href = "/login.html";
+    };
+    document.getElementById("statusIndicator").appendChild(btn);
 }
 
 /* ---------- health ---------- */
@@ -350,6 +367,7 @@ setupUpload();
 setupTabs();
 setupSearch();
 setupPlayerSync();
+setupAuth();
 refreshHealth();
 refreshCalls();
 setInterval(refreshHealth, 10000);

@@ -175,6 +175,20 @@ blockquote { font-size: 13px; color: var(--text-secondary); font-style: italic; 
 .chip.clickable { cursor: pointer; }
 .chip.clickable:hover { border-color: var(--accent); }
 
+/* Login */
+.login-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.login-card { display: flex; flex-direction: column; gap: 14px; padding: 32px; width: min(360px, 92vw); }
+.login-card .brand { justify-content: center; }
+.login-hint { font-size: 13px; color: var(--text-secondary); text-align: center; }
+.login-card input {
+    padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border-color);
+    background: rgba(0,0,0,.3); color: var(--text-primary); font-size: 14px;
+}
+.login-card input:focus { outline: none; border-color: var(--accent); }
+.login-card button { cursor: pointer; font-size: 14px; padding: 10px; }
+.login-card button:disabled { opacity: .6; cursor: default; }
+.login-error { color: var(--danger); font-size: 13px; text-align: center; }
+
 /* Metrics */
 .bar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; margin-bottom: 8px; background: rgba(0,0,0,.3); }
 .bar-agent, .bar-cust { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #000; white-space: nowrap; }
