@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 import db
 import jobs
+import warmup
 from pipeline import asr, diarize, qa
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -43,17 +44,12 @@ async def startup():
     jobs.start()
 
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _warm)
+    app.state.warmup = await loop.run_in_executor(None, warmup.run)
 
     for call_id in db.pending_call_ids():
         jobs.submit(call_id)
 
-
-def _warm():
-    logger.info("Loading speech models onto GPU...")
-    asr.load()
-    diarize.load()
-    logger.info("Models resident and ready.")
+    logger.info("Ready — http://localhost:8000")
 
 
 @app.get("/api/health")
@@ -71,6 +67,7 @@ def health():
         if torch.cuda.is_available()
         else 0,
         "queue_depth": jobs.depth(),
+        "warmup": getattr(app.state, "warmup", None),
     }
 
 

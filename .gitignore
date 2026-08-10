@@ -75,6 +75,10 @@ out/
 
 # Logs & temporary runtime files
 *.log
+.server.pid
+server/uploads/
+server/outputs/
+server/database/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

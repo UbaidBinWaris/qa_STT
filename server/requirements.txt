@@ -4,20 +4,22 @@ python-multipart>=0.0.9
 requests
 
 # Speech models (NVIDIA NeMo). Parakeet TDT v3 + Sortformer diarization.
-nemo-toolkit[asr]>=2.5.0
+# Pinned exactly: on Python 3.14 no other nemo-toolkit release has a matching
+# distribution, so an open range makes pip's resolver fail outright.
+nemo-toolkit[asr]==2.5.0
 torch
 torchaudio
 
 librosa>=0.10.1
 soundfile>=0.12.1
 
-# Pins required for NeMo 2.5 to import on this Python 3.14 / torch 2.13 stack.
-# protobuf: NeMo requests ~=5.29.5, but the installed onnx gencode needs >=5.31.
-# ml_dtypes: onnx imports float4_e2m1fn, absent from older releases.
-# numpy: numba (a NeMo RNNT dependency) refuses NumPy >= 2.5.
-protobuf>=5.31.1
-ml_dtypes>=0.5.1
+# numba (pulled in by NeMo's RNNT loss) refuses NumPy >= 2.5.
 numpy>=2.1,<2.5
+ml_dtypes>=0.5.1
+
+# NOTE: this stack also needs protobuf>=5.31.1, which contradicts NeMo's own
+# ~=5.29.5 pin, so pip's resolver rejects it here. start_server.py installs it
+# separately with --no-deps. See OVERRIDES in that file.
 
 # Enables CUDA graph decoding in the TDT decoder (meaningful ASR speedup).
 cuda-python>=12.3

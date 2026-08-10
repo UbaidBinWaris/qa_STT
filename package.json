@@ -1,19 +1,20 @@
 {
-  "name": "qa-stt-nvidia-parakeet",
-  "version": "1.0.0",
-  "description": "Independent NVIDIA Parakeet TDT STT Server and Live Real-Time Web Application",
+  "name": "qa-stt-call-intelligence",
+  "version": "2.0.0",
+  "description": "Local sales call QA platform — Parakeet TDT v3 ASR, Sortformer diarization, Qwen3 QA scorecards",
   "main": "server/start_server.py",
   "scripts": {
     "dev": "python3 server/start_server.py",
-    "start": "python3 server/start_server.py"
+    "start": "python3 server/start_server.py",
+    "stop": "python3 server/stop_server.py"
   },
   "keywords": [
-    "nvidia",
-    "parakeet",
-    "stt",
     "speech-to-text",
-    "real-time",
-    "tdt"
+    "diarization",
+    "call-qa",
+    "parakeet",
+    "sortformer",
+    "conversation-intelligence"
   ],
   "author": "",
   "license": "MIT"
