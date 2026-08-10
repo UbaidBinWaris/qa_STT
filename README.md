@@ -55,10 +55,23 @@ Requires `ffmpeg`, an NVIDIA GPU with recent drivers, and [Ollama](https://ollam
 
 ```bash
 ollama pull qwen3:8b
-npm run dev              # creates venv, installs deps, starts server
+npm run dev
 ```
 
 Open http://localhost:8000. First launch downloads ~3 GB of speech models.
+
+`npm run dev` is safe to re-run at any time. Each launch:
+
+1. **Stops any previous instance** (via PID file, then by process name, then by whatever holds the port) and waits for the port to actually free — so you never end up with two servers fighting over the GPU.
+2. **Checks dependencies by importing them**, and installs only if something is missing. It deliberately does *not* run `pip install` every launch: NeMo's own pins would downgrade `numpy`, `ml_dtypes`, and `protobuf` back to versions that cannot import. Force a reinstall with `npm run dev -- --reinstall`.
+3. **Warms up for real** — loads both speech models and runs an actual inference pass through each, so CUDA graphs are compiled before your first upload. It also verifies the Ollama QA model is pulled and warns loudly if not, rather than silently producing empty scorecards.
+
+Startup is ~25 s warm, and the first uploaded call is then full speed (a 105 s call completes in ~8 s including QA). The warm-up report is visible at `/api/health`.
+
+```bash
+npm run stop             # stop the server and release its VRAM
+PORT=8080 npm run dev    # run on a different port
+```
 
 ## API
 
