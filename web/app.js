@@ -119,6 +119,7 @@ async function selectCall(id) {
     $("detailBody").classList.remove("hidden");
     $("player").src = `/api/calls/${id}/audio`;
     await loadCall();
+    await fetchAndRenderWaveform(id);
     await refreshCalls();
     startPolling();
 }
@@ -280,10 +281,233 @@ function seek(t) {
 }
 window.seek = seek;
 
+/* ---------- Pitch Waveform Soundbar & Design Toggle ---------- */
+
+let waveformData = null;
+let currentMode = localStorage.getItem("soundbar_design_mode") || "waveform";
+
+function initSoundbarPlayer() {
+    setupSoundbarToggle();
+    setupWaveformControls();
+    setupWaveformInteractions();
+    applySoundbarMode(currentMode);
+}
+
+function setupSoundbarToggle() {
+    const btnWf = $("btnModeWaveform");
+    const btnStd = $("btnModeStandard");
+    if (!btnWf || !btnStd) return;
+
+    btnWf.onclick = () => applySoundbarMode("waveform");
+    btnStd.onclick = () => applySoundbarMode("standard");
+}
+
+function applySoundbarMode(mode) {
+    currentMode = mode;
+    localStorage.setItem("soundbar_design_mode", mode);
+
+    const isWf = mode === "waveform";
+    const btnWf = $("btnModeWaveform");
+    const btnStd = $("btnModeStandard");
+    if (btnWf) btnWf.classList.toggle("active", isWf);
+    if (btnStd) btnStd.classList.toggle("active", !isWf);
+
+    const wfView = $("waveformPlayerView");
+    const stdView = $("standardPlayerView");
+    if (wfView) wfView.classList.toggle("hidden", !isWf);
+    if (stdView) stdView.classList.toggle("hidden", isWf);
+
+    const lbl = $("soundbarModeLabel");
+    if (lbl) lbl.textContent = isWf ? "Pitch Waveform Soundbar" : "Standard Soundbar";
+}
+
+async function fetchAndRenderWaveform(callId) {
+    const barsContainer = $("waveformBars");
+    if (!barsContainer) return;
+
+    renderSkeletonBars(140);
+
+    try {
+        const data = await api(`/api/calls/${callId}/waveform`);
+        waveformData = data;
+        renderPitchBars(data.heights);
+    } catch (e) {
+        console.warn("Waveform fetch failed:", e);
+        const fallbackHeights = Array.from({ length: 140 }, () => 0.15 + Math.random() * 0.7);
+        renderPitchBars(fallbackHeights);
+    }
+}
+
+function renderSkeletonBars(num) {
+    const container = $("waveformBars");
+    if (!container) return;
+    container.innerHTML = "";
+    for (let i = 0; i < num; i++) {
+        const bar = document.createElement("div");
+        bar.className = "wf-bar";
+        bar.style.height = `${15 + Math.sin(i * 0.3) * 10}%`;
+        container.appendChild(bar);
+    }
+}
+
+function renderPitchBars(heights) {
+    const container = $("waveformBars");
+    if (!container) return;
+    container.innerHTML = "";
+    const p = $("player");
+    const pct = p.duration ? p.currentTime / p.duration : 0;
+    const activeIdx = Math.floor(pct * heights.length);
+
+    heights.forEach((h, i) => {
+        const bar = document.createElement("div");
+        bar.className = "wf-bar" + (i <= activeIdx ? " played" : "") + (i === activeIdx ? " active-bar" : "");
+        bar.style.height = `${Math.max(12, Math.min(100, Math.round(h * 100)))}%`;
+        bar.dataset.index = i;
+        container.appendChild(bar);
+    });
+}
+
+function setupWaveformControls() {
+    const p = $("player");
+
+    const btnPlayPause = $("btnPlayPause");
+    if (btnPlayPause) {
+        btnPlayPause.onclick = () => {
+            if (p.paused) p.play();
+            else p.pause();
+        };
+    }
+
+    p.onplay = () => syncPlayState(true);
+    p.onpause = () => syncPlayState(false);
+
+    const btnBack = $("btnSkipBack");
+    if (btnBack) btnBack.onclick = () => { p.currentTime = Math.max(0, p.currentTime - 5); };
+
+    const btnFwd = $("btnSkipFwd");
+    if (btnFwd) btnFwd.onclick = () => { p.currentTime = Math.min(p.duration || 0, p.currentTime + 5); };
+
+    const volSlider = $("volumeSlider");
+    const btnMute = $("btnMute");
+    if (volSlider) {
+        volSlider.oninput = (e) => {
+            p.volume = parseFloat(e.target.value);
+            p.muted = p.volume === 0;
+            updateVolumeIcon(p.muted || p.volume === 0);
+        };
+    }
+    if (btnMute) {
+        btnMute.onclick = () => {
+            p.muted = !p.muted;
+            if (volSlider) volSlider.value = p.muted ? 0 : p.volume;
+            updateVolumeIcon(p.muted);
+        };
+    }
+
+    const speedPills = document.querySelectorAll(".speed-pill");
+    speedPills.forEach((pill) => {
+        pill.onclick = () => {
+            speedPills.forEach((el) => el.classList.remove("active"));
+            pill.classList.add("active");
+            p.playbackRate = parseFloat(pill.dataset.speed);
+        };
+    });
+}
+
+function syncPlayState(isPlaying) {
+    const iconPlay = $("iconPlay");
+    const iconPause = $("iconPause");
+    if (iconPlay && iconPause) {
+        iconPlay.classList.toggle("hidden", isPlaying);
+        iconPause.classList.toggle("hidden", !isPlaying);
+    }
+}
+
+function updateVolumeIcon(isMuted) {
+    const iconHigh = $("iconVolHigh");
+    const iconMute = $("iconVolMute");
+    if (iconHigh && iconMute) {
+        iconHigh.classList.toggle("hidden", isMuted);
+        iconMute.classList.toggle("hidden", !isMuted);
+    }
+}
+
+function setupWaveformInteractions() {
+    const container = $("waveformContainer");
+    const hoverLine = $("waveformHoverLine");
+    const tooltip = $("waveformTooltip");
+    const p = $("player");
+
+    if (!container) return;
+
+    let isDragging = false;
+
+    const getTimeFromEvent = (e) => {
+        const rect = container.getBoundingClientRect();
+        const offsetX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const fraction = offsetX / rect.width;
+        return { fraction, time: fraction * (p.duration || 0), offsetX };
+    };
+
+    container.onmousemove = (e) => {
+        const { time, offsetX } = getTimeFromEvent(e);
+        if (hoverLine) hoverLine.style.left = `${offsetX}px`;
+        if (tooltip) tooltip.textContent = fmtTime(time);
+        if (isDragging && p.duration) {
+            p.currentTime = time;
+        }
+    };
+
+    container.onmousedown = (e) => {
+        isDragging = true;
+        const { time } = getTimeFromEvent(e);
+        if (p.duration) p.currentTime = time;
+    };
+
+    window.addEventListener("mouseup", () => { isDragging = false; });
+
+    window.addEventListener("keydown", (e) => {
+        if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+            e.preventDefault();
+            if (p.paused) p.play();
+            else p.pause();
+        }
+    });
+}
+
+function updateWaveformProgress() {
+    const p = $("player");
+    const t = p.currentTime;
+    const dur = p.duration || 0;
+
+    const curEl = $("wfCurrentTime");
+    const durEl = $("wfDuration");
+    if (curEl) curEl.textContent = fmtTime(t);
+    if (durEl) durEl.textContent = dur ? fmtTime(dur) : "0:00";
+
+    const pct = dur ? t / dur : 0;
+
+    const playhead = $("waveformPlayhead");
+    if (playhead) playhead.style.left = `${(pct * 100).toFixed(2)}%`;
+
+    const bars = document.querySelectorAll(".wf-bar");
+    if (bars.length) {
+        const activeIdx = Math.floor(pct * bars.length);
+        bars.forEach((bar, idx) => {
+            bar.classList.toggle("played", idx <= activeIdx);
+            bar.classList.toggle("active-bar", idx === activeIdx && !p.paused);
+        });
+    }
+}
+
 function setupPlayerSync() {
     const p = $("player");
     p.ontimeupdate = () => {
         const t = p.currentTime;
+        
+        // Sync Pitch Waveform progress & playhead
+        updateWaveformProgress();
+
         let activeTurn = null;
         for (const turn of document.querySelectorAll(".turn")) {
             const on = t >= +turn.dataset.start && t <= +turn.dataset.end;
@@ -374,6 +598,7 @@ setupUpload();
 setupTabs();
 setupSearch();
 setupPlayerSync();
+initSoundbarPlayer();
 setupAuth();
 refreshHealth();
 refreshCalls();

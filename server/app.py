@@ -22,7 +22,7 @@ import auth  # noqa: E402  (must follow load_env so APP_PASSWORD is visible)
 import db  # noqa: E402
 import jobs  # noqa: E402
 import warmup  # noqa: E402
-from pipeline import asr, diarize, qa  # noqa: E402
+from pipeline import asr, diarize, qa, waveform  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("app")
@@ -159,6 +159,14 @@ def get_audio(call_id: str):
     if not call or not os.path.exists(call["audio_path"]):
         raise HTTPException(404, "Audio not found")
     return FileResponse(call["audio_path"], filename=call["filename"])
+
+
+@app.get("/api/calls/{call_id}/waveform")
+def get_waveform(call_id: str):
+    call = db.get_call(call_id)
+    if not call or not os.path.exists(call["audio_path"]):
+        raise HTTPException(404, "Audio not found")
+    return waveform.get_waveform(call_id, call["audio_path"])
 
 
 @app.delete("/api/calls/{call_id}")

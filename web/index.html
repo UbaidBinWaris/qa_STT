@@ -58,7 +58,104 @@
                     </div>
                 </div>
 
-                <audio id="player" controls preload="metadata"></audio>
+                <!-- Audio Player Container with 2 Toggleable Design Modes -->
+                <div class="player-wrapper glass-panel" id="playerWrapper">
+                    <div class="player-header">
+                        <div class="player-title">
+                            <span class="pulse-dot"></span>
+                            <span id="soundbarModeLabel">Pitch Waveform Soundbar</span>
+                        </div>
+                        <div class="view-mode-toggle" id="viewModeToggle">
+                            <button class="mode-btn active" id="btnModeWaveform" data-mode="waveform" title="Switch to Pitch Waveform Soundbar View">
+                                <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M2 10v4M6 6v12M10 3v18M14 8v8M18 5v14M22 10v4"/>
+                                </svg>
+                                <span>Pitch Waveform</span>
+                            </button>
+                            <button class="mode-btn" id="btnModeStandard" data-mode="standard" title="Switch to Standard Soundbar View">
+                                <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="2" y1="12" x2="22" y2="12"/>
+                                    <circle cx="8" cy="12" r="3" fill="currentColor"/>
+                                </svg>
+                                <span>Standard Bar</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mode 1: Dynamic Pitch Waveform Soundbar (Initial & Default) -->
+                    <div class="waveform-player-view" id="waveformPlayerView">
+                        <div class="waveform-track-container" id="waveformContainer">
+                            <div class="waveform-bars" id="waveformBars"></div>
+                            <div class="waveform-playhead" id="waveformPlayhead">
+                                <div class="playhead-head"></div>
+                            </div>
+                            <div class="waveform-hover-line" id="waveformHoverLine">
+                                <span class="waveform-tooltip" id="waveformTooltip">0:00</span>
+                            </div>
+                        </div>
+
+                        <div class="waveform-controls">
+                            <div class="left-controls">
+                                <button class="control-btn play-btn" id="btnPlayPause" title="Play / Pause">
+                                    <svg class="play-icon" id="iconPlay" viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5 3 19 12 5 21 5 3"/>
+                                    </svg>
+                                    <svg class="pause-icon hidden" id="iconPause" viewBox="0 0 24 24" fill="currentColor">
+                                        <rect x="6" y="4" width="4" height="16"/>
+                                        <rect x="14" y="4" width="4" height="16"/>
+                                    </svg>
+                                </button>
+                                <button class="control-btn skip-btn" id="btnSkipBack" title="Rewind 5s">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M11 19l-9-7 9-7v14zM22 19l-9-7 9-7v14z"/>
+                                    </svg>
+                                    <span>-5s</span>
+                                </button>
+                                <button class="control-btn skip-btn" id="btnSkipFwd" title="Forward 5s">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M13 5l9 7-9 7V5zM2 5l9 7-9 7V5z"/>
+                                    </svg>
+                                    <span>+5s</span>
+                                </button>
+                                <div class="time-display">
+                                    <span class="curr-time" id="wfCurrentTime">0:00</span>
+                                    <span class="time-sep">/</span>
+                                    <span class="dur-time" id="wfDuration">0:00</span>
+                                </div>
+                            </div>
+
+                            <div class="right-controls">
+                                <div class="volume-container">
+                                    <button class="control-btn icon-only" id="btnMute" title="Mute/Unmute">
+                                        <svg class="vol-icon" id="iconVolHigh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                                        </svg>
+                                        <svg class="vol-icon hidden" id="iconVolMute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                                            <line x1="23" y1="9" x2="17" y2="15"/>
+                                            <line x1="17" y1="9" x2="23" y2="15"/>
+                                        </svg>
+                                    </button>
+                                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.01" value="1">
+                                </div>
+
+                                <div class="speed-selector" id="speedSelector">
+                                    <button class="speed-pill" data-speed="0.8">0.8x</button>
+                                    <button class="speed-pill active" data-speed="1">1x</button>
+                                    <button class="speed-pill" data-speed="1.25">1.25x</button>
+                                    <button class="speed-pill" data-speed="1.5">1.5x</button>
+                                    <button class="speed-pill" data-speed="2">2x</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mode 2: Standard Audio Bar View -->
+                    <div class="standard-player-view hidden" id="standardPlayerView">
+                        <audio id="player" controls preload="metadata"></audio>
+                    </div>
+                </div>
 
                 <div class="progress-panel glass-panel hidden" id="progressPanel">
                     <div class="progress-label"><span id="progressStage">queued</span><span id="progressPct">0%</span></div>

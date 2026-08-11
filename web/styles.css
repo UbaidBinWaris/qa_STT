@@ -198,3 +198,392 @@ blockquote { font-size: 13px; color: var(--text-secondary); font-style: italic; 
 .stat { padding: 12px; border-radius: 10px; background: rgba(0,0,0,.22); display: flex; flex-direction: column; gap: 2px; }
 .stat-value { font-size: 19px; font-weight: 600; }
 .stat-label { font-size: 11px; color: var(--text-secondary); }
+
+/* ==========================================================================
+   SUPER STYLISH PITCH WAVEFORM SOUNDBAR & DESIGN TOGGLE
+   ========================================================================== */
+
+.player-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: 16px;
+    background: radial-gradient(circle at 50% 0%, rgba(118, 185, 0, 0.07) 0%, rgba(18, 26, 44, 0.8) 70%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.player-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 4px;
+}
+
+.player-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: pulseGlow 2s infinite ease-in-out;
+}
+
+@keyframes pulseGlow {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 14px var(--accent); }
+}
+
+/* View Mode Toggle Switch */
+.view-mode-toggle {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    gap: 3px;
+}
+
+.mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mode-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-btn.active {
+    background: var(--accent);
+    color: #000;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(118, 185, 0, 0.35);
+}
+
+.mode-icon {
+    width: 14px;
+    height: 14px;
+}
+
+/* Mode 1: Dynamic Height Pitch Waveform View */
+.waveform-player-view {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Waveform Track Container */
+.waveform-track-container {
+    position: relative;
+    height: 80px; /* Enhanced height depending on audio pitch as requested */
+    width: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.waveform-track-container:hover {
+    border-color: rgba(118, 185, 0, 0.4);
+    box-shadow: 0 0 16px rgba(118, 185, 0, 0.15);
+}
+
+.waveform-bars {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    width: 100%;
+    height: 100%;
+    padding: 10px 14px;
+}
+
+/* Individual Vertical Pitch Bar */
+.wf-bar {
+    flex: 1;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.18);
+    transform-origin: center center;
+    transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+    min-height: 4px;
+}
+
+.wf-bar.played {
+    background: linear-gradient(180deg, #76b900 0%, #3b82f6 100%);
+    box-shadow: 0 0 6px rgba(118, 185, 0, 0.4);
+}
+
+.wf-bar.active-bar {
+    background: #ffffff !important;
+    box-shadow: 0 0 12px var(--accent), 0 0 20px #ffffff;
+    transform: scaleY(1.15);
+}
+
+.wf-bar:hover {
+    background: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Playhead Line */
+.waveform-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0%;
+    width: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    pointer-events: none;
+    transition: left 0.05s linear;
+    z-index: 5;
+}
+
+.playhead-head {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    margin-left: -4px;
+    margin-top: 2px;
+}
+
+/* Hover Indicator & Floating Timestamp Badge */
+.waveform-hover-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 6;
+}
+
+.waveform-track-container:hover .waveform-hover-line {
+    opacity: 1;
+}
+
+.waveform-tooltip {
+    position: absolute;
+    top: 6px;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid var(--accent);
+    color: var(--text-primary);
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+/* Waveform Controls Toolbar */
+.waveform-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.left-controls, .right-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Play/Pause Button */
+.control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--text-primary);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.control-btn:hover {
+    border-color: var(--accent);
+    background: rgba(118, 185, 0, 0.12);
+}
+
+.play-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    box-shadow: 0 0 16px rgba(118, 185, 0, 0.4);
+}
+
+.play-btn:hover {
+    transform: scale(1.06);
+    background: #87ce00;
+    box-shadow: 0 0 22px rgba(118, 185, 0, 0.6);
+}
+
+.play-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.skip-btn {
+    padding: 6px 10px;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.skip-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.icon-only {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    padding: 0;
+}
+
+.icon-only svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Time Display */
+.time-display {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.25);
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.time-sep {
+    color: var(--text-secondary);
+}
+
+.dur-time {
+    color: var(--text-secondary);
+}
+
+/* Volume Container */
+.volume-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.volume-slider {
+    width: 80px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 6px var(--accent);
+    transition: transform 0.1s ease;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.25);
+}
+
+/* Speed Selector Pills */
+.speed-selector {
+    display: flex;
+    gap: 3px;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.speed-pill {
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.speed-pill:hover {
+    color: var(--text-primary);
+}
+
+.speed-pill.active {
+    background: rgba(118, 185, 0, 0.2);
+    color: var(--accent);
+    font-weight: 600;
+    border: 1px solid rgba(118, 185, 0, 0.4);
+}
+
+/* Mode 2: Standard Audio Player View */
+.standard-player-view {
+    width: 100%;
+    padding: 4px 0;
+}
+
+.standard-player-view audio {
+    width: 100%;
+    height: 40px;
+    border-radius: 10px;
+}
+
