@@ -9,7 +9,8 @@
     "stop": "python3 server/stop_server.py",
     "tunnel": "python3 server/tunnel_cf.py",
     "tunnel:cf": "python3 server/tunnel_cf.py",
-    "tunnel:ngrok": "python3 server/tunnel.py"
+    "tunnel:ngrok": "python3 server/tunnel.py",
+    "test": "server/venv/bin/python tests/run.py"
   },
   "keywords": [
     "speech-to-text",

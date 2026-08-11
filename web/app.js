@@ -32,7 +32,9 @@ async function setupAuth() {
     const { auth_required } = await api("/api/auth-status");
     if (!auth_required) return;
     const btn = document.createElement("button");
-    btn.className = "tab";
+    // Not class "tab": setupTabs() binds panel-switching to every .tab, and the
+    // header button sits before the tab bar, so it would also become .tab[0].
+    btn.className = "btn-signout";
     btn.textContent = "Sign out";
     btn.onclick = async () => {
         await api("/api/logout", { method: "POST" });
@@ -247,10 +249,10 @@ function renderQA(qa) {
         </div>
         ${issues.length
             ? issues.map((i) => `
-                <div class="finding severity-${i.severity}" onclick="seek(${i.timestamp})">
+                <div class="finding severity-${severityClass(i.severity)}" data-seek="${num(i.timestamp)}">
                     <div class="finding-head"><strong>${escapeHtml(i.rule)}</strong>
-                        <span class="chip">${i.severity}</span>
-                        <span class="ts">${fmtTime(i.timestamp)}</span></div>
+                        <span class="chip">${escapeHtml(i.severity)}</span>
+                        <span class="ts">${fmtTime(num(i.timestamp))}</span></div>
                     <blockquote>${escapeHtml(i.quote)}</blockquote>
                 </div>`).join("")
             : `<p class="muted">No compliance issues detected.</p>`}
@@ -267,10 +269,10 @@ function renderQA(qa) {
         <h3>Objections</h3>
         ${(qa.objections || []).length
             ? qa.objections.map((o) => `
-                <div class="finding" onclick="seek(${o.timestamp})">
+                <div class="finding" data-seek="${num(o.timestamp)}">
                     <div class="finding-head"><strong>${escapeHtml(o.type)}</strong>
                         <span class="chip ${o.handled ? "score-good" : "score-bad"}">${o.handled ? "handled" : "unhandled"}</span>
-                        <span class="ts">${fmtTime(o.timestamp)}</span></div>
+                        <span class="ts">${fmtTime(num(o.timestamp))}</span></div>
                     <blockquote>${escapeHtml(o.quote)}</blockquote>
                 </div>`).join("")
             : `<p class="muted">None raised.</p>`}
@@ -287,7 +289,13 @@ function renderQA(qa) {
 }
 
 const pill = (label, ok) =>
-    `<span class="chip ${ok ? "score-good" : "score-bad"}">${label}: ${ok ? "yes" : "no"}</span>`;
+    `<span class="chip ${ok ? "score-good" : "score-bad"}">${escapeHtml(label)}: ${ok ? "yes" : "no"}</span>`;
+
+// QA fields come from a language model, and the model reads a transcript that a
+// caller controls by speaking. Treat every value as hostile: numbers are coerced,
+// strings escaped, and CSS classes restricted to a known set.
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const severityClass = (s) => (["low", "medium", "high"].includes(s) ? s : "unknown");
 
 function renderMetrics(m) {
     const panel = $("panel-metrics");
@@ -296,39 +304,46 @@ function renderMetrics(m) {
         return;
     }
     const ratio = m.talk_ratio || {};
+    const agent = num(ratio.Agent), customer = num(ratio.Customer);
     panel.innerHTML = `
         <h3>Talk Ratio</h3>
         <div class="bar">
-            <div class="bar-agent" style="width:${ratio.Agent || 0}%">${(ratio.Agent || 0).toFixed(0)}% Agent</div>
-            <div class="bar-cust" style="width:${ratio.Customer || 0}%">${(ratio.Customer || 0).toFixed(0)}% Customer</div>
+            <div class="bar-agent">${agent.toFixed(0)}% Agent</div>
+            <div class="bar-cust">${customer.toFixed(0)}% Customer</div>
         </div>
         <div class="stat-grid">
-            ${stat("Duration", fmtTime(m.duration))}
-            ${stat("Turns", m.turns)}
-            ${stat("Agent WPM", m.wpm?.Agent)}
-            ${stat("Customer WPM", m.wpm?.Customer)}
-            ${stat("Silence", `${m.silence_total}s`)}
-            ${stat("Longest pause", `${m.longest_silence}s`)}
-            ${stat("Agent interrupts", m.interruptions?.Agent || 0)}
-            ${stat("Customer interrupts", m.interruptions?.Customer || 0)}
+            ${stat("Duration", fmtTime(num(m.duration)))}
+            ${stat("Turns", num(m.turns))}
+            ${stat("Agent WPM", num(m.wpm?.Agent))}
+            ${stat("Customer WPM", num(m.wpm?.Customer))}
+            ${stat("Silence", `${num(m.silence_total)}s`)}
+            ${stat("Longest pause", `${num(m.longest_silence)}s`)}
+            ${stat("Agent interrupts", num(m.interruptions?.Agent))}
+            ${stat("Customer interrupts", num(m.interruptions?.Customer))}
         </div>
         <h3>Dead Air</h3>
         ${(m.dead_air_events || []).length
             ? `<div class="pill-row">${m.dead_air_events.map((d) =>
-                `<span class="chip clickable" onclick="seek(${d.start})">${fmtTime(d.start)} · ${d.duration}s</span>`).join("")}</div>`
+                `<span class="chip clickable" data-seek="${num(d.start)}">${fmtTime(num(d.start))} · ${num(d.duration)}s</span>`).join("")}</div>`
             : `<p class="muted">No pauses over 3s.</p>`}`;
+
+    // Widths are applied through the CSSOM rather than a style attribute, which
+    // a strict style-src CSP blocks.
+    panel.querySelector(".bar-agent").style.width = `${agent}%`;
+    panel.querySelector(".bar-cust").style.width = `${customer}%`;
 }
 
 const stat = (label, value) =>
-    `<div class="stat"><span class="stat-value">${value ?? "–"}</span><span class="stat-label">${label}</span></div>`;
+    `<div class="stat"><span class="stat-value">${escapeHtml(String(value ?? "–"))}</span>` +
+    `<span class="stat-label">${escapeHtml(label)}</span></div>`;
 
 /* ---------- audio sync ---------- */
 
 function seek(t) {
     const p = $("player");
-    p.currentTime = t;
+    p.currentTime = num(t);
     p.play();
-    
+
     // Auto scroll to active turn on manual seek
     setTimeout(() => {
         const activeTurn = document.querySelector(".turn.playing");
@@ -338,6 +353,13 @@ function seek(t) {
     }, 50);
 }
 window.seek = seek;
+
+// Delegated instead of inline onclick: rendered data never becomes executable
+// markup, which also lets the page run under a script-src 'self' CSP.
+document.addEventListener("click", (e) => {
+    const target = e.target.closest("[data-seek]");
+    if (target) seek(target.dataset.seek);
+});
 
 /* ---------- Pitch Waveform Soundbar & Design Toggle ---------- */
 

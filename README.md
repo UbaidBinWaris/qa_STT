@@ -29,6 +29,7 @@ Everything runs on one workstation. No cloud, no API keys, no customer data leav
 - [API reference](#api-reference)
 - [Data model](#data-model)
 - [Project layout](#project-layout)
+- [Security](#security)
 - [Accuracy safeguards](#accuracy-safeguards)
 - [Troubleshooting](#troubleshooting)
 
@@ -467,6 +468,70 @@ web/
   styles.css          theme
 test-audio/           sample recordings
 ```
+
+---
+
+## Security
+
+```bash
+npm test    # 55 checks across upload validation, limits, and security posture
+```
+
+Run against a live server. The security suite finishes by tripping the login rate
+limiter on purpose, so restart the server before running it again.
+
+### Browser hardening
+
+Every response carries a strict Content-Security-Policy (`script-src 'self'`), plus
+`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, a
+`Permissions-Policy` denying camera/microphone/geolocation, and HSTS when the request arrives
+over TLS. API responses and HTML are `no-store`; static assets are `no-cache` so a security fix
+cannot be defeated by a stale cached script.
+
+The CSP is only meaningful because the pages contain **no inline JavaScript**: event handling is
+delegated through `data-` attributes, and element sizing goes through the CSSOM rather than
+`style` attributes.
+
+> **Why this matters here.** QA scorecards are written by a language model that reads a
+> transcript, and the transcript is dictated by whoever is on the call. A caller can therefore
+> influence model output by speaking. Earlier the rendering interpolated those values straight
+> into `class` and `onclick` attributes, so a crafted value executed JavaScript in the
+> reviewer's authenticated session — confirmed by injecting a payload and watching it run. All
+> model-derived values are now escaped, numbers coerced, and severities restricted to a known
+> set.
+
+### Access control
+
+- Authentication activates whenever `APP_PASSWORD` is set; local use stays open, tunnels never do.
+- Sessions are HttpOnly, `SameSite=Strict` (which removes CSRF as a concern), and `Secure`
+  whenever the request arrived over TLS. Twelve-hour expiry, capped in number.
+- Failed logins are compared in constant time and rate limited per client — 8 attempts in
+  5 minutes triggers a 15-minute lockout with `Retry-After`. `X-Forwarded-For` is trusted only
+  when `TRUST_PROXY` is set, so the limiter cannot be bypassed with a forged header.
+- Page loads redirect to the sign-in screen; scripts and API calls receive `401` instead, so the
+  browser never gets HTML where it expects JavaScript.
+- CORS is limited to explicit origins, methods, and headers — a wildcard with credentials would
+  permit cross-site reads.
+
+### Input and error handling
+
+Request bodies outside the upload path are capped at `MAX_BODY_KB`. Search queries are length
+limited. Error responses never echo exception text, file paths, or SQLite internals; the detail
+goes to the log instead.
+
+### Audit trail
+
+Successful logins, failed logins, lockouts, audio retrieval, and deletions are logged with the
+client address and marked `AUDIT`, so access to recordings can be reconstructed.
+
+### Known limitations
+
+- **Single shared password, no per-user accounts.** Fine for a small office; an audit trail that
+  must attribute access to individuals needs real user accounts.
+- **Sessions live in memory**, so restarting the server signs everyone out.
+- **Rate limiting is per-process**, which suits this single-node deployment.
+- **Prompt injection is contained, not prevented.** A caller can influence QA wording; the
+  schema, quote verification, and output escaping bound the damage.
 
 ---
 

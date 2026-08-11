@@ -20,6 +20,7 @@ config.load_env()
 import auth  # noqa: E402  (must follow load_env so APP_PASSWORD is visible)
 import db  # noqa: E402
 import jobs  # noqa: E402
+import security  # noqa: E402
 import uploads  # noqa: E402
 import warmup  # noqa: E402
 from pipeline import asr, diarize, qa, waveform  # noqa: E402
@@ -38,10 +39,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins or ["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "ngrok-skip-browser-warning"],
 )
+# Registration order is reversed at request time, so the body limit runs first,
+# then auth, then headers are applied to whatever response comes back.
+app.middleware("http")(security.headers_middleware)
 app.middleware("http")(auth.middleware)
+app.middleware("http")(security.body_limit_middleware)
 
 
 @app.on_event("startup")
@@ -71,15 +76,16 @@ def auth_status(request: Request):
 
 
 @app.post("/api/login")
-def do_login(response: Response, payload: dict = Body(...)):
-    return auth.login(response, str(payload.get("password", "")))
+def do_login(request: Request, response: Response, payload: dict = Body(...)):
+    password = payload.get("password", "")
+    if not isinstance(password, str) or len(password) > 512:
+        raise HTTPException(400, "Invalid password field")
+    return auth.login(response, password, request)
 
 
 @app.post("/api/logout")
 def do_logout(response: Response, request: Request):
-    token = request.cookies.get(auth.COOKIE)
-    if token:
-        auth._sessions.pop(token, None)
+    auth.destroy_session(request.cookies.get(auth.COOKIE))
     response.delete_cookie(auth.COOKIE, path="/")
     return {"authenticated": False}
 
@@ -115,9 +121,10 @@ async def upload_call(response: Response, file: UploadFile = File(...)):
         result = await uploads.ingest(file, jobs.depth())
     except uploads.UploadError as e:
         raise HTTPException(e.status, e.message)
-    except OSError as e:
+    except OSError:
+        # Log the detail; never return it — it exposes server paths and errno.
         logger.exception("Upload failed while writing to disk")
-        raise HTTPException(507, f"Could not store the upload: {e.strerror or e}")
+        raise HTTPException(507, "Could not store the upload. Contact an administrator.")
 
     if result["duplicate"]:
         # Already ingested — hand back the original rather than processing twice.
@@ -160,10 +167,12 @@ def get_status(call_id: str):
 
 
 @app.get("/api/calls/{call_id}/audio")
-def get_audio(call_id: str):
+def get_audio(request: Request, call_id: str):
     call = db.get_call(call_id)
     if not call or not os.path.exists(call["audio_path"]):
         raise HTTPException(404, "Audio not found")
+    # Recordings are the most sensitive artefact here; note every retrieval.
+    logger.info(f"AUDIT audio access {call_id} by {security.client_key(request)}")
     return FileResponse(call["audio_path"], filename=call["filename"])
 
 
@@ -176,10 +185,12 @@ def get_waveform(call_id: str):
 
 
 @app.delete("/api/calls/{call_id}")
-def delete_call(call_id: str):
+def delete_call(request: Request, call_id: str):
     call = db.get_call(call_id)
     if not call:
         raise HTTPException(404, "Call not found")
+    logger.info(f"AUDIT delete {call_id} ({call['filename']}) "
+                f"by {security.client_key(request)}")
     for path in (call["audio_path"], os.path.join(SERVER_DIR, "outputs", f"{call_id}.wav")):
         if path and os.path.exists(path):
             os.remove(path)
@@ -198,12 +209,18 @@ def reprocess(call_id: str):
 
 @app.get("/api/search")
 def search(q: str):
-    if not q.strip():
+    q = q.strip()
+    if not q:
         return []
+    if len(q) > 200:
+        raise HTTPException(400, "Search query is too long.")
     try:
         return db.search(q)
-    except Exception as e:
-        raise HTTPException(400, f"Invalid search query: {e}")
+    except Exception:
+        # FTS5 raises on malformed match syntax; the message quotes SQLite
+        # internals, so report the fault without echoing them back.
+        logger.info(f"Rejected search query: {q[:80]!r}")
+        raise HTTPException(400, "Could not parse that search query.")
 
 
 web_dir = os.path.join(os.path.dirname(SERVER_DIR), "web")
