@@ -34,6 +34,25 @@ CHUNK_LENGTH = 180.0
 CHUNK_OVERLAP = 15.0
 
 
+def _release():
+    """Return the decoder's scratch memory to the allocator.
+
+    Greedy TDT decoding with timestamps builds a BatchedAlignments holding the
+    full joint output — time frames x 8198 vocab, ~0.7 GB for a 3-minute window.
+    Those tensors sit in reference cycles, so torch.cuda.empty_cache() on its own
+    reclaims nothing: the memory is still referenced, merely unreachable. Without
+    the collection first, each call strands roughly 0.8 GB and the process climbs
+    from 3 GB to over 12 GB across a handful of jobs, until a long call OOMs.
+    """
+    import gc
+
+    import torch
+
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def _words_of(hyp, offset: float = 0.0) -> list[dict]:
     return [
         {
@@ -72,6 +91,11 @@ def _transcribe_chunked(wav_path: str) -> list[dict]:
             os.remove(part)
 
             new = _words_of(hyp, offset)
+            # Release per window, not just per call: a 20-minute recording is
+            # seven windows, and holding all of them at once is what pushed the
+            # long calls into OOM part-way through a single job.
+            del hyp
+            _release()
             # Drop words the previous window already covered.
             if words:
                 cutoff = words[-1]["end"]
@@ -106,5 +130,7 @@ def transcribe(wav_path: str) -> tuple[str, list[dict]]:
         with _lock:
             hyp = model.transcribe([wav_path], timestamps=True, verbose=False)[0]
         words = _words_of(hyp)
+        del hyp
+        _release()
 
     return " ".join(w["word"] for w in words), words

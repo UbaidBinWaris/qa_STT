@@ -18,6 +18,7 @@ import config
 config.load_env()
 
 import auth  # noqa: E402  (must follow load_env so APP_PASSWORD is visible)
+import clean_uploads  # noqa: E402
 import db  # noqa: E402
 import jobs  # noqa: E402
 import security  # noqa: E402
@@ -56,6 +57,7 @@ async def startup():
     db.reset_stuck_jobs()
     uploads.cleanup_incoming()
     jobs.start()
+    asyncio.create_task(clean_uploads.start_cleaner_task())
 
     loop = asyncio.get_event_loop()
     app.state.warmup = await loop.run_in_executor(None, warmup.run)

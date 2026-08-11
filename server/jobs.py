@@ -22,11 +22,15 @@ def _loop():
             logger.exception(f"Job {call_id} failed")
             db.set_failed(call_id, f"{type(e).__name__}: {e}")
         finally:
-            # The TDT decoder retains CUDA graph pools sized to the longest input
-            # it has seen; returning the cache keeps a 16 GB card from creeping.
+            # empty_cache() alone reclaims nothing here: the decoder's alignment
+            # tensors are unreachable but still referenced through cycles, so the
+            # collection has to run first.
             try:
+                import gc
+
                 import torch
 
+                gc.collect()
                 torch.cuda.empty_cache()
             except Exception:
                 pass
