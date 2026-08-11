@@ -547,7 +547,9 @@ function setupPlayerSync() {
 function startPolling() {
     clearInterval(pollTimer);
     pollTimer = setInterval(async () => {
-        if (!currentCall) return;
+        // A background tab has nothing to show, and over a metered tunnel this
+        // loop is the single largest consumer of the request quota.
+        if (!currentCall || document.hidden) return;
         const { status, stage, progress } = await api(`/api/calls/${currentCall}/status`);
         $("progressStage").textContent = stage || status;
         $("progressPct").textContent = `${progress}%`;
@@ -557,7 +559,6 @@ function startPolling() {
             await loadCall();
         }
         await refreshCalls();
-        await refreshHealth();
     }, 2000);
 }
 
@@ -621,4 +622,7 @@ initSoundbarPlayer();
 setupAuth();
 refreshHealth();
 refreshCalls();
-setInterval(refreshHealth, 10000);
+// Idle polling is what burns a tunnel's monthly request quota, so the heartbeat
+// is slow and pauses entirely while the tab is in the background.
+setInterval(() => { if (!document.hidden) refreshHealth(); }, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshHealth(); });

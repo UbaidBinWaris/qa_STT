@@ -187,8 +187,8 @@ The warm-up report is exposed at `/api/health`.
 ## Remote access
 
 ```bash
-npm run tunnel:cf     # Cloudflare — no warning page, no account   (recommended)
-npm run tunnel        # ngrok — requires a token
+npm run tunnel          # Cloudflare — routes via Karachi, no warning page, no account
+npm run tunnel:ngrok    # ngrok — stable URL, but routes via Mumbai
 ```
 
 Both print a public HTTPS URL alongside the password, and both refuse to start unless
@@ -200,6 +200,99 @@ Both print a public HTTPS URL alongside the password, and both refuse to start u
 > does not help because the interstitial is served *before* the policy runs. Either click
 > through it once per visitor, upgrade ngrok, or use Cloudflare — `trycloudflare.com` links open
 > directly at the login screen.
+
+### Which tunnel to choose
+
+| | `npm run tunnel` (Cloudflare) | `npm run tunnel:ngrok` (ngrok) |
+|---|---|---|
+| **Traffic routes via** | **Karachi, Pakistan** (`KHI`), anchored in Singapore | **Mumbai, India** — not changeable on the free plan |
+| URL stability | New random URL each time **the tunnel** starts | Same every launch (one free static domain) |
+| Warning page | None | Once per visitor |
+| Account needed | No | Yes, authtoken |
+
+Cloudflare is the default because it keeps traffic regional. Use ngrok only when a bookmarkable
+address matters more than the routing path.
+
+**The Cloudflare URL changes when the *tunnel* restarts — not when the server does.** Restarting
+the server with `npm run dev` while `npm run tunnel` keeps running leaves the address untouched
+(verified: the link stayed identical and reachable across a full server stop/start, returning
+502 only while the server was down). Keep the tunnel process alive in its own terminal and the
+link stays valid all day; only Ctrl-C on the tunnel mints a new one.
+
+Set `NGROK_DOMAIN` in `.env` to pin the ngrok hostname explicitly:
+
+```
+NGROK_DOMAIN="your-name.ngrok-free.dev"
+```
+
+### Tunnel routing
+
+Nothing in this project selects a country — each provider picks its own edge, and the two
+behave very differently.
+
+**Cloudflare** is anycast: every visitor is served by the Cloudflare PoP nearest to *them*.
+From Islamabad that is **`KHI` (Karachi, Pakistan)**; the tunnel itself anchors at
+`sin` (Singapore). No Indian infrastructure is involved.
+
+**ngrok** resolves its free `*.ngrok-free.dev` domains through GeoDNS, and for this part of the
+world it always answers Mumbai. Measured by resolving the hostname with different client
+subnets:
+
+| Visitor location | ngrok edge returned |
+|---|---|
+| Pakistan | Mumbai, India |
+| UAE (Dubai) | Mumbai, India |
+| Germany | Mumbai, India |
+| United States | Ohio, USA |
+
+ngrok v3 has **no `--region` flag**, and free static domains cannot be pinned to an edge, so
+routing away from Mumbai is not possible on the free plan. If ngrok is required *and* Indian
+routing is unacceptable, a paid plan with a reserved domain and chosen edge region is the only
+option — otherwise use the Cloudflare tunnel.
+
+The origin address visitors ultimately reach is your own office connection; the edge only
+relays traffic.
+
+### The ngrok domain
+
+Free accounts get **one auto-assigned development domain**, e.g.
+`lazily-stunned-freemason.ngrok-free.dev`. It is stable — the same hostname comes back on every
+restart, reboot, and reinstall, because it belongs to the account rather than the session.
+
+Choosing your own name is a paid feature. Attempting it fails with:
+
+```
+Only paid plans may create endpoints with custom subdomains.
+This account is on the 'Free' plan.
+```
+
+You can delete the assigned domain in the ngrok dashboard and create another, but the
+replacement is another random name — and any link you already shared stops working.
+
+### Long-running deployments
+
+Neither free tunnel is built to stay up indefinitely. The published limits:
+
+| | ngrok Free | TryCloudflare (quick tunnel) |
+|---|---|---|
+| HTTP requests | **20,000 / month** | No documented quota |
+| Data transfer | **1 GB / month** | No documented quota |
+| Concurrent requests | — | 200 in flight |
+| Uptime guarantee | — | **None** — "testing and development only" |
+
+**ngrok Free cannot support a continuously-open dashboard.** A single browser tab left open
+issues a heartbeat every 30 seconds — roughly 29,000 requests a month before anyone uploads
+anything, already past the 20,000 cap. Streaming call audio then consumes the 1 GB transfer
+allowance in a few hundred plays.
+
+To keep request volume low, the dashboard pauses all polling while its tab is in the
+background and uses a 30-second heartbeat rather than a busy loop.
+
+For genuine round-the-clock access, use a **named Cloudflare Tunnel** instead of a quick
+tunnel: it is free, has no request quota, keeps a fixed hostname on a domain you control, and
+is the configuration Cloudflare actually supports for production. Run it under `systemd` so it
+survives terminal closes and reboots — both tunnel scripts here trap SIGHUP and exit with the
+shell by design.
 
 ### Access control
 
@@ -228,7 +321,8 @@ Settings come from `.env` in the repository root (gitignored) or the environment
 | Variable | Default | Purpose |
 |---|---|---|
 | `APP_PASSWORD` | *(unset)* | Enables authentication. Required for tunnels. |
-| `NGROK_AUTHTOKEN` | *(unset)* | Required by `npm run tunnel`. |
+| `NGROK_AUTHTOKEN` | *(unset)* | Required by `npm run tunnel:ngrok`. |
+| `NGROK_DOMAIN` | *(unset)* | Pin a specific ngrok hostname instead of the assigned one. |
 | `PORT` | `8000` | Server port. |
 | `ALLOWED_ORIGINS` | localhost | Comma-separated extra CORS origins. |
 | `ASR_MODEL` | `nvidia/parakeet-tdt-0.6b-v3` | Transcription model. |

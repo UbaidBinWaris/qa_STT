@@ -122,10 +122,14 @@ def main():
     subprocess.run([ngrok, "config", "add-authtoken", token],
                    check=True, capture_output=True)
 
-    proc = subprocess.Popen(
-        [ngrok, "http", str(PORT), "--log", "stdout", "--log-format", "json"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    cmd = [ngrok, "http", str(PORT), "--log", "stdout", "--log-format", "json"]
+    # Free accounts get one static domain, so the URL is already stable. Pinning it
+    # explicitly guarantees the shared link never drifts if that ever changes.
+    domain = os.environ.get("NGROK_DOMAIN")
+    if domain:
+        cmd += ["--url", domain if domain.startswith("http") else f"https://{domain}"]
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     url = public_url(timeout=20)
 
     try:
@@ -141,9 +145,10 @@ def main():
         print("\nAnyone with the URL still needs the password. Share both privately,")
         print("and stop the tunnel (Ctrl-C) when you are done — the recordings")
         print("contain customer names and phone numbers.")
-        print("\nFirst-time visitors see ngrok's 'You are about to visit' page and")
-        print("must click Visit Site once. That is a free-plan behaviour and cannot")
-        print("be disabled from here — `npm run tunnel:cf` avoids it entirely.")
+        print("\nNote: free-plan ngrok shows visitors a 'You are about to visit' page")
+        print("once, and routes this region's traffic through Mumbai, India — neither")
+        print("is changeable here. `npm run tunnel` (Cloudflare) avoids both and")
+        print("routes via Karachi instead.")
         print("\nInspect traffic at http://127.0.0.1:4040\n", flush=True)
         proc.wait()
     except KeyboardInterrupt:

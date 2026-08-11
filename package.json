@@ -7,8 +7,9 @@
     "dev": "python3 server/start_server.py",
     "start": "python3 server/start_server.py",
     "stop": "python3 server/stop_server.py",
-    "tunnel": "python3 server/tunnel.py",
-    "tunnel:cf": "python3 server/tunnel_cf.py"
+    "tunnel": "python3 server/tunnel_cf.py",
+    "tunnel:cf": "python3 server/tunnel_cf.py",
+    "tunnel:ngrok": "python3 server/tunnel.py"
   },
   "keywords": [
     "speech-to-text",
