@@ -57,8 +57,19 @@ def main():
         sys.exit(1)
 
     proc = subprocess.Popen(
-        [binary, "tunnel", "--url", f"http://localhost:{PORT}", "--no-autoupdate"],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        [
+            binary,
+            "tunnel",
+            "--url",
+            f"http://127.0.0.1:{PORT}",
+            "--http-host-header",
+            f"127.0.0.1:{PORT}",
+            "--no-autoupdate",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
 
     try:
