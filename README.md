@@ -123,9 +123,15 @@ Measured on an **RTX 5070 Ti (16 GB, Blackwell)** with 8 kHz mono telephony reco
 | Transcription | 61 s call in **1.6 s** — ≈38× realtime |
 | Diarization | 173 s call in **0.8 s** |
 | Full pipeline incl. QA | 105 s call in **8 s** |
-| Longest tested call | 20 min → 197 turns, 2 809 words |
+| Sustained throughput | 96 min of audio in 3.6 min — **≈27× realtime** |
+| Longest tested call | 20.7 min → 197 turns, 2 809 words |
 | Server start (warm) | **25 s** |
-| Idle VRAM | **4.1 GB** (speech models resident) |
+| VRAM, idle | **3.3 GB** (speech models resident) |
+| VRAM, under sustained load | **4.25 GB, flat** — measured over 18 consecutive jobs |
+
+Sustained throughput is the number that matters for capacity planning: one GPU absorbs roughly
+**27 audio-hours per wall-clock hour**, so a day of continuous operation covers several hundred
+hours of calls.
 
 Calls longer than four minutes are transcribed in overlapping windows and spliced, so memory
 stays bounded regardless of recording length.

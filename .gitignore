@@ -73,6 +73,20 @@ out/
 .pnp
 .pnp.*
 
+# Audio & Database files
+test-audio/
+*.mp3
+*.wav
+*.m4a
+*.flac
+*.ogg
+*.opus
+*.webm
+*.aac
+*.db
+*.db-wal
+*.db-shm
+
 # Logs & temporary runtime files
 *.log
 .server.pid
