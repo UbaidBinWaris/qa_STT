@@ -278,6 +278,14 @@ function seek(t) {
     const p = $("player");
     p.currentTime = t;
     p.play();
+    
+    // Auto scroll to active turn on manual seek
+    setTimeout(() => {
+        const activeTurn = document.querySelector(".turn.playing");
+        if (activeTurn) {
+            activeTurn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+    }, 50);
 }
 window.seek = seek;
 
@@ -285,6 +293,7 @@ window.seek = seek;
 
 let waveformData = null;
 let currentMode = localStorage.getItem("soundbar_design_mode") || "waveform";
+let lastActiveTurn = null;
 
 function initSoundbarPlayer() {
     setupSoundbarToggle();
@@ -316,9 +325,6 @@ function applySoundbarMode(mode) {
     const stdView = $("standardPlayerView");
     if (wfView) wfView.classList.toggle("hidden", !isWf);
     if (stdView) stdView.classList.toggle("hidden", isWf);
-
-    const lbl = $("soundbarModeLabel");
-    if (lbl) lbl.textContent = isWf ? "Pitch Waveform Soundbar" : "Standard Soundbar";
 }
 
 async function fetchAndRenderWaveform(callId) {
@@ -446,13 +452,19 @@ function setupWaveformInteractions() {
         const rect = container.getBoundingClientRect();
         const offsetX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
         const fraction = offsetX / rect.width;
-        return { fraction, time: fraction * (p.duration || 0), offsetX };
+        return { fraction, time: fraction * (p.duration || 0), offsetX, rect };
     };
 
     container.onmousemove = (e) => {
-        const { time, offsetX } = getTimeFromEvent(e);
+        const { time, offsetX, rect } = getTimeFromEvent(e);
         if (hoverLine) hoverLine.style.left = `${offsetX}px`;
-        if (tooltip) tooltip.textContent = fmtTime(time);
+        if (tooltip) {
+            tooltip.textContent = fmtTime(time);
+            // Clamp tooltip left offset so text badge never overflows left or right edge
+            const halfW = (tooltip.offsetWidth || 34) / 2;
+            const clampedX = Math.max(halfW + 4, Math.min(offsetX, rect.width - halfW - 4));
+            tooltip.style.left = `${clampedX - offsetX}px`;
+        }
         if (isDragging && p.duration) {
             p.currentTime = time;
         }
@@ -514,6 +526,13 @@ function setupPlayerSync() {
             turn.classList.toggle("playing", on);
             if (on) activeTurn = turn;
         }
+
+        // Auto-scroll bottom transcript panel so active turn stays visible on screen!
+        if (activeTurn && activeTurn !== lastActiveTurn) {
+            lastActiveTurn = activeTurn;
+            activeTurn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+
         document.querySelectorAll(".w.spoken").forEach((w) => w.classList.remove("spoken"));
         if (activeTurn) {
             for (const w of activeTurn.querySelectorAll(".w")) {
