@@ -61,23 +61,17 @@
                 <!-- Audio Player Container with 2 Toggleable Design Modes -->
                 <div class="player-wrapper glass-panel" id="playerWrapper">
                     <div class="player-header">
-                        <div class="player-title">
-                            <span class="pulse-dot"></span>
-                            <span id="soundbarModeLabel">Pitch Waveform Soundbar</span>
-                        </div>
                         <div class="view-mode-toggle" id="viewModeToggle">
-                            <button class="mode-btn active" id="btnModeWaveform" data-mode="waveform" title="Switch to Pitch Waveform Soundbar View">
-                                <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M2 10v4M6 6v12M10 3v18M14 8v8M18 5v14M22 10v4"/>
+                            <button class="mode-btn active" id="btnModeWaveform" data-mode="waveform" title="Waveform View">
+                                <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <path d="M3 10v4M6 5v14M9 3v18M12 7v10M15 4v16M18 8v8M21 11v2"/>
                                 </svg>
-                                <span>Pitch Waveform</span>
                             </button>
-                            <button class="mode-btn" id="btnModeStandard" data-mode="standard" title="Switch to Standard Soundbar View">
-                                <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="2" y1="12" x2="22" y2="12"/>
-                                    <circle cx="8" cy="12" r="3" fill="currentColor"/>
+                            <button class="mode-btn" id="btnModeStandard" data-mode="standard" title="Standard Bar View">
+                                <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <line x1="3" y1="12" x2="21" y2="12"/>
+                                    <circle cx="8" cy="12" r="3.5" fill="currentColor"/>
                                 </svg>
-                                <span>Standard Bar</span>
                             </button>
                         </div>
                     </div>
@@ -98,24 +92,26 @@
                             <div class="left-controls">
                                 <button class="control-btn play-btn" id="btnPlayPause" title="Play / Pause">
                                     <svg class="play-icon" id="iconPlay" viewBox="0 0 24 24" fill="currentColor">
-                                        <polygon points="5 3 19 12 5 21 5 3"/>
+                                        <polygon points="6 4 20 12 6 20 6 4"/>
                                     </svg>
                                     <svg class="pause-icon hidden" id="iconPause" viewBox="0 0 24 24" fill="currentColor">
-                                        <rect x="6" y="4" width="4" height="16"/>
-                                        <rect x="14" y="4" width="4" height="16"/>
+                                        <rect x="6" y="4" width="4" height="16" rx="1"/>
+                                        <rect x="14" y="4" width="4" height="16" rx="1"/>
                                     </svg>
                                 </button>
                                 <button class="control-btn skip-btn" id="btnSkipBack" title="Rewind 5s">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M11 19l-9-7 9-7v14zM22 19l-9-7 9-7v14z"/>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M1 12a11 11 0 1 0 3.2-7.8"/>
+                                        <path d="M1 4v5h5"/>
+                                        <text x="12" y="15.5" font-size="8" font-weight="700" fill="currentColor" text-anchor="middle" stroke="none">5</text>
                                     </svg>
-                                    <span>-5s</span>
                                 </button>
                                 <button class="control-btn skip-btn" id="btnSkipFwd" title="Forward 5s">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M13 5l9 7-9 7V5zM2 5l9 7-9 7V5z"/>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M23 12a11 11 0 1 1-3.2-7.8"/>
+                                        <path d="M23 4v5h-5"/>
+                                        <text x="12" y="15.5" font-size="8" font-weight="700" fill="currentColor" text-anchor="middle" stroke="none">5</text>
                                     </svg>
-                                    <span>+5s</span>
                                 </button>
                                 <div class="time-display">
                                     <span class="curr-time" id="wfCurrentTime">0:00</span>
