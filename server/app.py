@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import shutil
 
 # Keep model weights inside the repo. Must precede any HF/NeMo import.
 _CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models_cache")
@@ -21,6 +20,7 @@ config.load_env()
 import auth  # noqa: E402  (must follow load_env so APP_PASSWORD is visible)
 import db  # noqa: E402
 import jobs  # noqa: E402
+import uploads  # noqa: E402
 import warmup  # noqa: E402
 from pipeline import asr, diarize, qa, waveform  # noqa: E402
 
@@ -28,8 +28,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("app")
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(SERVER_DIR, "uploads")
-ALLOWED_EXT = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".webm", ".aac"}
 
 app = FastAPI(title="Sales Call QA — Speech Intelligence", version="2.0.0")
 
@@ -48,9 +46,10 @@ app.middleware("http")(auth.middleware)
 
 @app.on_event("startup")
 async def startup():
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(uploads.UPLOAD_DIR, exist_ok=True)
     db.init()
     db.reset_stuck_jobs()
+    uploads.cleanup_incoming()
     jobs.start()
 
     loop = asyncio.get_event_loop()
@@ -104,22 +103,29 @@ def health():
     }
 
 
-@app.post("/api/calls")
-async def upload_call(file: UploadFile = File(...)):
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in ALLOWED_EXT:
-        raise HTTPException(400, f"Unsupported audio format '{ext}'")
+@app.get("/api/limits")
+def get_limits():
+    """Lets the browser reject oversized files before spending bandwidth."""
+    return uploads.limits()
 
-    call_id = db.create_call(file.filename, "")
-    dest = os.path.join(UPLOAD_DIR, f"{call_id}{ext}")
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    db.connect().execute("UPDATE calls SET audio_path=? WHERE id=?", (dest, call_id))
-    db.connect().commit()
 
-    jobs.submit(call_id)
-    logger.info(f"Queued {file.filename} as {call_id}")
-    return {"call_id": call_id, "status": "queued"}
+@app.post("/api/calls", status_code=201)
+async def upload_call(response: Response, file: UploadFile = File(...)):
+    try:
+        result = await uploads.ingest(file, jobs.depth())
+    except uploads.UploadError as e:
+        raise HTTPException(e.status, e.message)
+    except OSError as e:
+        logger.exception("Upload failed while writing to disk")
+        raise HTTPException(507, f"Could not store the upload: {e.strerror or e}")
+
+    if result["duplicate"]:
+        # Already ingested — hand back the original rather than processing twice.
+        response.status_code = 200
+        return result
+
+    jobs.submit(result["call_id"])
+    return result
 
 
 @app.get("/api/calls")

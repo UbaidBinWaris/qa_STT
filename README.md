@@ -327,6 +327,11 @@ Settings come from `.env` in the repository root (gitignored) or the environment
 | `ALLOWED_ORIGINS` | localhost | Comma-separated extra CORS origins. |
 | `ASR_MODEL` | `nvidia/parakeet-tdt-0.6b-v3` | Transcription model. |
 | `DIAR_MODEL` | `nvidia/diar_sortformer_4spk-v1` | Diarization model. |
+| `MAX_UPLOAD_MB` | `500` | Largest accepted upload. |
+| `MAX_DURATION_MIN` | `240` | Longest accepted recording. |
+| `MIN_DURATION_SEC` | `1` | Shortest accepted recording. |
+| `MAX_QUEUE` | `50` | Uploads rejected with 503 beyond this backlog. |
+| `MIN_FREE_MB` | `2048` | Refuse uploads below this much free disk. |
 | `QA_MODEL` | `qwen3:8b` | Ollama model for QA. |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint. |
 
@@ -346,7 +351,8 @@ All routes require a session cookie when `APP_PASSWORD` is set.
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/calls` | Upload a recording (multipart `file`). Returns `call_id`. |
+| `POST` | `/api/calls` | Upload a recording (multipart `file`). `201` on success, `200` if it duplicates an existing call. |
+| `GET` | `/api/limits` | Active upload limits and accepted formats. |
 | `GET` | `/api/calls` | List calls with status and QA score. |
 | `GET` | `/api/calls/{id}` | Full record: transcript, metrics, QA. |
 | `GET` | `/api/calls/{id}/status` | Poll processing stage and progress. |
@@ -367,6 +373,43 @@ All routes require a session cookie when `APP_PASSWORD` is set.
 
 **Accepted audio:** `.mp3` `.wav` `.m4a` `.flac` `.ogg` `.opus` `.webm` `.aac`
 Any sample rate or channel count — ffmpeg normalises to 16 kHz mono.
+
+### Upload validation
+
+Ingestion lives in [`server/uploads.py`](server/uploads.py), separate from the HTTP layer, and is
+fail-closed: a call is registered in the database only after its audio is safely on disk and
+proven decodable. Rejected or interrupted uploads leave nothing behind.
+
+| Check | Response |
+|---|---|
+| Missing or disallowed extension | `415` |
+| Empty file | `422` |
+| Not decodable as audio, or corrupt | `422` |
+| No audio track in the container | `422` |
+| Shorter than `MIN_DURATION_SEC` | `422` |
+| Larger than `MAX_UPLOAD_MB` | `413` |
+| Longer than `MAX_DURATION_MIN` | `413` |
+| Queue at `MAX_QUEUE` | `503` |
+| Free disk below `MIN_FREE_MB` | `507` |
+| Byte-identical to an existing call | `200` with `duplicate: true` |
+| Accepted | `201` |
+
+Details worth knowing:
+
+- **Content is verified, not trusted.** Extensions are trivially spoofed, so every upload is
+  probed with `ffprobe`; a `.mp3` that is really a ZIP is rejected before it can reach the GPU.
+- **The size cap applies mid-stream.** The body is written in 1 MB chunks and aborted the moment
+  it exceeds the limit, so an oversized upload never lands on disk or in memory.
+- **Duplicates are detected by SHA-256** of the content, not by filename, and return the
+  original call instead of transcribing it again.
+- **Filenames are sanitised** for display only — stored files are named by call id, so path
+  traversal, null bytes, and Windows paths cannot influence where anything is written.
+- **Writes are atomic.** Uploads land in `uploads/.incoming/` and are moved into place only once
+  valid; any leftovers are swept at startup.
+
+Configure the limits with `MAX_UPLOAD_MB`, `MAX_DURATION_MIN`, `MIN_DURATION_SEC`, `MAX_QUEUE`,
+and `MIN_FREE_MB`. `GET /api/limits` returns the active values, which the browser uses to reject
+obvious mistakes before spending bandwidth.
 
 ---
 

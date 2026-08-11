@@ -175,6 +175,10 @@ blockquote { font-size: 13px; color: var(--text-secondary); font-style: italic; 
 .chip.clickable { cursor: pointer; }
 .chip.clickable:hover { border-color: var(--accent); }
 
+/* Upload feedback */
+.upload-status { font-size: 12px; color: var(--text-secondary); line-height: 1.5; padding: 2px 4px; }
+.upload-status.upload-error { color: var(--danger); }
+
 /* Login */
 .login-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
 .login-card { display: flex; flex-direction: column; gap: 14px; padding: 32px; width: min(360px, 92vw); }

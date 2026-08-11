@@ -96,19 +96,69 @@ function setupUpload() {
     input.onchange = () => upload(input.files);
 }
 
+let limits = null;
+
+async function loadLimits() {
+    try {
+        limits = await api("/api/limits");
+    } catch {
+        limits = null;  // server-side checks still apply
+    }
+}
+
+// Cheap client-side screening so obvious rejects cost no upload bandwidth.
+// The server re-checks everything; this is convenience, not enforcement.
+function preCheck(file) {
+    if (!limits) return null;
+    const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+    if (file.name.indexOf(".") === -1 || !limits.allowed_extensions.includes(ext)) {
+        return `${file.name}: unsupported format. Accepted: ${limits.allowed_extensions.join(", ")}`;
+    }
+    if (file.size > limits.max_bytes) {
+        return `${file.name}: ${(file.size / 1048576).toFixed(0)} MB exceeds the ${limits.max_upload_mb} MB limit`;
+    }
+    if (file.size === 0) return `${file.name}: file is empty`;
+    return null;
+}
+
 async function upload(files) {
     for (const file of files) {
+        const problem = preCheck(file);
+        if (problem) {
+            showUploadError(problem);
+            continue;
+        }
         const fd = new FormData();
         fd.append("file", file);
+        setUploadStatus(`Uploading ${file.name}…`);
         try {
-            const { call_id } = await api("/api/calls", { method: "POST", body: fd });
+            const res = await api("/api/calls", { method: "POST", body: fd });
             await refreshCalls();
-            selectCall(call_id);
+            selectCall(res.call_id);
+            setUploadStatus(res.duplicate
+                ? `${file.name} was already uploaded — opening the existing call.`
+                : "");
         } catch (e) {
-            alert(`Upload failed: ${e.message}`);
+            showUploadError(`${file.name}: ${e.message}`);
         }
     }
     $("fileInput").value = "";
+}
+
+function setUploadStatus(text) {
+    const el = $("uploadStatus");
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle("hidden", !text);
+    el.classList.remove("upload-error");
+}
+
+function showUploadError(text) {
+    const el = $("uploadStatus");
+    if (!el) { alert(text); return; }
+    el.textContent = text;
+    el.classList.remove("hidden");
+    el.classList.add("upload-error");
 }
 
 /* ---------- detail ---------- */
@@ -614,6 +664,7 @@ function escapeHtml(s) {
     return d.innerHTML;
 }
 
+loadLimits();
 setupUpload();
 setupTabs();
 setupSearch();

@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS calls (
     filename TEXT NOT NULL,
     audio_path TEXT NOT NULL,
     duration REAL,
+    size_bytes INTEGER,
+    sha256 TEXT,
     status TEXT NOT NULL DEFAULT 'queued',
     stage TEXT,
     progress INTEGER NOT NULL DEFAULT 0,
@@ -22,6 +24,8 @@ CREATE TABLE IF NOT EXISTS calls (
     created_at REAL NOT NULL,
     completed_at REAL
 );
+-- idx_calls_sha256 is created in _migrate(), after ALTER TABLE has had a chance
+-- to add sha256 to databases that predate it.
 
 CREATE TABLE IF NOT EXISTS segments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,19 +84,71 @@ def connect() -> sqlite3.Connection:
 
 
 def init():
-    connect().executescript(SCHEMA)
-    connect().commit()
+    conn = connect()
+    conn.executescript(SCHEMA)
+    _migrate(conn)
+    conn.commit()
 
 
-def create_call(filename: str, audio_path: str) -> str:
+def _migrate(conn: sqlite3.Connection):
+    """Add columns introduced after a database was first created."""
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(calls)")}
+    for column, ddl in (("size_bytes", "INTEGER"), ("sha256", "TEXT")):
+        if column not in existing:
+            conn.execute(f"ALTER TABLE calls ADD COLUMN {column} {ddl}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_sha256 ON calls(sha256)")
+
+
+def create_call(
+    filename: str,
+    audio_path: str,
+    duration: float | None = None,
+    size_bytes: int | None = None,
+    sha256: str | None = None,
+) -> str:
     call_id = uuid.uuid4().hex[:12]
     conn = connect()
     conn.execute(
-        "INSERT INTO calls (id, filename, audio_path, status, created_at) VALUES (?,?,?,?,?)",
-        (call_id, filename, audio_path, "queued", time.time()),
+        """INSERT INTO calls (id, filename, audio_path, duration, size_bytes, sha256,
+                              status, created_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (call_id, filename, audio_path, duration, size_bytes, sha256, "queued", time.time()),
     )
     conn.commit()
     return call_id
+
+
+def create_call_with_id(
+    call_id: str,
+    filename: str,
+    audio_path: str,
+    duration: float | None = None,
+    size_bytes: int | None = None,
+    sha256: str | None = None,
+):
+    """Register a call whose id was reserved earlier, so the stored file can be
+    named before the row exists."""
+    conn = connect()
+    conn.execute(
+        """INSERT INTO calls (id, filename, audio_path, duration, size_bytes, sha256,
+                              status, created_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (call_id, filename, audio_path, duration, size_bytes, sha256, "queued", time.time()),
+    )
+    conn.commit()
+
+
+def find_by_hash(sha256: str) -> dict | None:
+    """Used to return the existing call instead of re-processing a duplicate."""
+    row = connect().execute(
+        "SELECT * FROM calls WHERE sha256=? AND status != 'failed' ORDER BY created_at LIMIT 1",
+        (sha256,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def new_call_id() -> str:
+    return uuid.uuid4().hex[:12]
 
 
 def set_progress(call_id: str, stage: str, progress: int):
