@@ -2,7 +2,7 @@ import logging
 import os
 
 import db
-from pipeline import align, asr, audio, diarize, metrics, qa
+from pipeline import align, asr, audio, diarize, metrics, qa, reliability
 
 logger = logging.getLogger("pipeline.run")
 
@@ -26,12 +26,19 @@ def process(call_id: str):
     _, words = asr.transcribe(wav)
     logger.info(f"[{call_id}] {len(words)} words")
 
+    # Mark doubtful words before alignment, so the flags travel with each word
+    # into its speaker turn and on into the QA evidence check.
+    report = reliability.analyse(words)
+
     db.set_progress(call_id, "diarizing", 50)
     turns = diarize.diarize(wav)
     logger.info(f"[{call_id}] {len(turns)} speaker turns")
 
     db.set_progress(call_id, "aligning", 65)
     segments = align.build(words, turns, duration)
+
+    for seg in segments:
+        seg["confidence"], seg["uncertain"] = reliability.segment_confidence(seg["words"])
 
     db.set_progress(call_id, "analyzing", 75)
     stats = metrics.compute(segments, duration)
@@ -50,6 +57,7 @@ def process(call_id: str):
     db.set_progress(call_id, "saving", 95)
     db.save_transcript(call_id, segments)
     db.save_metrics(call_id, stats)
+    db.save_reliability(call_id, report)
     if result:
         db.save_qa(call_id, result)
     db.set_completed(call_id)

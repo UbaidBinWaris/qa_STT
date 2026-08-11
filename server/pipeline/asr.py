@@ -12,6 +12,37 @@ _model = None
 _lock = threading.Lock()
 
 
+def _enable_word_confidence(model):
+    """Turn on per-word confidence scoring.
+
+    NeMo emits no confidence by default, which left every word in the database
+    with confidence NULL. Word confidence is derived from frame confidence, and
+    NeMo requires preserve_alignments for that — the alignment tensors this
+    brings back are exactly what _release() reclaims, so the two must stay
+    together. Costs roughly 0.9 GB of working set and a little decode time.
+    """
+    from omegaconf import OmegaConf, open_dict
+
+    cfg = model.cfg.decoding
+    with open_dict(cfg):
+        cfg.preserve_alignments = True
+        cfg.confidence_cfg = OmegaConf.create({
+            "preserve_frame_confidence": True,
+            "preserve_token_confidence": True,
+            "preserve_word_confidence": True,
+            "exclude_blank": True,
+            # A word is only as trustworthy as its least certain token.
+            "aggregation": "min",
+            "method_cfg": {
+                "name": "entropy",
+                "entropy_type": "tsallis",
+                "alpha": 0.33,
+                "entropy_norm": "lin",
+            },
+        })
+    model.change_decoding_strategy(cfg)
+
+
 def load():
     global _model
     with _lock:
@@ -22,8 +53,9 @@ def load():
             logger.info(f"Loading ASR model {MODEL_ID}...")
             m = nemo_asr.models.ASRModel.from_pretrained(MODEL_ID)
             m = m.to("cuda" if torch.cuda.is_available() else "cpu").eval()
+            _enable_word_confidence(m)
             _model = m
-            logger.info("ASR model resident.")
+            logger.info("ASR model resident (word confidence enabled).")
     return _model
 
 
@@ -54,14 +86,30 @@ def _release():
 
 
 def _words_of(hyp, offset: float = 0.0) -> list[dict]:
+    """Pair each timestamped word with its confidence.
+
+    NeMo returns confidences as a separate list on the hypothesis rather than
+    inside the timestamp entries, so they are zipped by position. If the two
+    ever disagree in length, confidence is dropped rather than misaligned —
+    a score attached to the wrong word is worse than no score.
+    """
+    entries = hyp.timestamp.get("word", [])
+    scores = getattr(hyp, "word_confidence", None) or []
+    if len(scores) != len(entries):
+        if scores:
+            logger.warning(
+                f"Confidence count {len(scores)} != word count {len(entries)}; discarding."
+            )
+        scores = [None] * len(entries)
+
     return [
         {
             "word": w["word"],
             "start": float(w["start"]) + offset,
             "end": float(w["end"]) + offset,
-            "confidence": float(w["confidence"]) if "confidence" in w else None,
+            "confidence": round(float(c), 4) if c is not None else None,
         }
-        for w in hyp.timestamp.get("word", [])
+        for w, c in zip(entries, scores)
     ]
 
 

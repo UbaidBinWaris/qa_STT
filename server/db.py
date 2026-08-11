@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS calls (
     duration REAL,
     size_bytes INTEGER,
     sha256 TEXT,
+    reliability_score REAL,
+    reliability TEXT,
     status TEXT NOT NULL DEFAULT 'queued',
     stage TEXT,
     progress INTEGER NOT NULL DEFAULT 0,
@@ -93,9 +95,20 @@ def init():
 def _migrate(conn: sqlite3.Connection):
     """Add columns introduced after a database was first created."""
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(calls)")}
-    for column, ddl in (("size_bytes", "INTEGER"), ("sha256", "TEXT")):
+    for column, ddl in (("size_bytes", "INTEGER"), ("sha256", "TEXT"),
+                        ("reliability_score", "REAL"), ("reliability", "TEXT")):
         if column not in existing:
             conn.execute(f"ALTER TABLE calls ADD COLUMN {column} {ddl}")
+
+    seg_cols = {row["name"] for row in conn.execute("PRAGMA table_info(segments)")}
+    for column, ddl in (("confidence", "REAL"), ("uncertain", "INTEGER NOT NULL DEFAULT 0")):
+        if column not in seg_cols:
+            conn.execute(f"ALTER TABLE segments ADD COLUMN {column} {ddl}")
+
+    word_cols = {row["name"] for row in conn.execute("PRAGMA table_info(words)")}
+    for column, ddl in (("uncertain", "INTEGER NOT NULL DEFAULT 0"), ("risk", "TEXT")):
+        if column not in word_cols:
+            conn.execute(f"ALTER TABLE words ADD COLUMN {column} {ddl}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_sha256 ON calls(sha256)")
 
 
@@ -192,14 +205,21 @@ def save_transcript(call_id: str, segments: list[dict]):
     conn.execute("DELETE FROM segments_fts WHERE call_id=?", (call_id,))
     for idx, seg in enumerate(segments):
         cur = conn.execute(
-            "INSERT INTO segments (call_id, idx, speaker, role, start, end, text) VALUES (?,?,?,?,?,?,?)",
-            (call_id, idx, seg["speaker"], seg["role"], seg["start"], seg["end"], seg["text"]),
+            """INSERT INTO segments (call_id, idx, speaker, role, start, end, text,
+                                     confidence, uncertain)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (call_id, idx, seg["speaker"], seg["role"], seg["start"], seg["end"],
+             seg["text"], seg.get("confidence"), int(bool(seg.get("uncertain")))),
         )
         seg_id = cur.lastrowid
         conn.executemany(
-            "INSERT INTO words (call_id, segment_id, word, start, end, confidence) VALUES (?,?,?,?,?,?)",
+            """INSERT INTO words (call_id, segment_id, word, start, end, confidence,
+                                  uncertain, risk)
+               VALUES (?,?,?,?,?,?,?,?)""",
             [
-                (call_id, seg_id, w["word"], w["start"], w["end"], w.get("confidence"))
+                (call_id, seg_id, w["word"], w["start"], w["end"], w.get("confidence"),
+                 int(bool(w.get("uncertain"))),
+                 ",".join(w.get("risk") or []) or None)
                 for w in seg["words"]
             ],
         )
@@ -208,6 +228,22 @@ def save_transcript(call_id: str, segments: list[dict]):
             (seg["text"], call_id, seg_id),
         )
     conn.commit()
+
+
+def save_reliability(call_id: str, summary: dict):
+    conn = connect()
+    conn.execute(
+        "UPDATE calls SET reliability_score=?, reliability=? WHERE id=?",
+        (summary.get("score"), json.dumps(summary), call_id),
+    )
+    conn.commit()
+
+
+def get_reliability(call_id: str) -> dict | None:
+    row = connect().execute(
+        "SELECT reliability FROM calls WHERE id=?", (call_id,)
+    ).fetchone()
+    return json.loads(row["reliability"]) if row and row["reliability"] else None
 
 
 def save_metrics(call_id: str, metrics: dict):
@@ -255,7 +291,12 @@ def get_transcript(call_id: str) -> list[dict]:
     by_seg: dict[int, list] = {}
     for w in words:
         by_seg.setdefault(w["segment_id"], []).append(
-            {"word": w["word"], "start": w["start"], "end": w["end"], "confidence": w["confidence"]}
+            {
+                "word": w["word"], "start": w["start"], "end": w["end"],
+                "confidence": w["confidence"],
+                "uncertain": bool(w["uncertain"]),
+                "risk": w["risk"].split(",") if w["risk"] else [],
+            }
         )
     return [
         {
@@ -265,6 +306,8 @@ def get_transcript(call_id: str) -> list[dict]:
             "start": s["start"],
             "end": s["end"],
             "text": s["text"],
+            "confidence": s["confidence"],
+            "uncertain": bool(s["uncertain"]),
             "words": by_seg.get(s["id"], []),
         }
         for s in segs

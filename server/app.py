@@ -152,6 +152,7 @@ def get_call(call_id: str):
         "transcript": db.get_transcript(call_id),
         "metrics": db.get_metrics(call_id),
         "qa": db.get_qa(call_id),
+        "reliability": db.get_reliability(call_id),
     }
 
 

@@ -30,6 +30,7 @@ Everything runs on one workstation. No cloud, no API keys, no customer data leav
 - [Data model](#data-model)
 - [Project layout](#project-layout)
 - [Security](#security)
+- [Transcript reliability](#transcript-reliability)
 - [Accuracy safeguards](#accuracy-safeguards)
 - [Troubleshooting](#troubleshooting)
 
@@ -538,6 +539,47 @@ client address and marked `AUDIT`, so access to recordings can be reconstructed.
 - **Rate limiting is per-process**, which suits this single-node deployment.
 - **Prompt injection is contained, not prevented.** A caller can influence QA wording; the
   schema, quote verification, and output escaping bound the damage.
+
+---
+
+## Transcript reliability
+
+A QA verdict is only as trustworthy as the transcript beneath it. "I don't want the plan" and
+"I do want the plan" differ by one short word, and a mis-heard name or figure quietly corrupts a
+compliance finding. The pipeline therefore scores its own transcript and shows the doubt rather
+than hiding it.
+
+**Per-word confidence.** NeMo emits no confidence by default — every word in the database used to
+carry `NULL`. Greedy TDT decoding now runs with entropy-based word confidence
+(`aggregation: min`, so a word is only as good as its weakest token). Measured cost: **+0.9 GB
+working set, ~8% slower decode**, no change to steady-state VRAM.
+
+**Thresholds are relative, because the raw scores are not spread out.** On real calls confidence
+sits in a narrow band — median 0.990, p5 0.965, floor 0.934 — so an absolute cutoff like 0.5
+would never fire. A word is flagged when it falls in the bottom decile of *its own call*, or
+below a hard floor of 0.95.
+
+**Risk categories.** Confidence alone misses the words that matter most. Each word is also tagged
+where a mistake would change a QA outcome: `negation`, `number`, `money`, `date`, `contact`,
+`compliance`, `proper-noun`. Risk-tagged words are held to a stricter confidence bar, since a
+confident error on "not" is far more damaging than a hesitant one on "the".
+
+On a representative call this flags **6.8% of words and 8.6% as risk-bearing** — including a
+customer name the model rendered four different ways (`Ahmud`, `AR Akrum`, `Akram`) and a garbled
+account number (`890s, 870. 89870.`).
+
+**Evidence validation.** Every objection and compliance finding must now prove itself: the quote
+must exist in the transcript, its timestamp must point at the turn it came from, and the speaker
+must match. Wrong timestamps and speakers are corrected from the located segment rather than
+discarding an otherwise sound finding; unlocatable quotes are dropped. A finding whose evidence
+rests on flagged words is kept but marked `transcript_uncertain`, and the count surfaces as
+`evidence_review_required`.
+
+**In the UI**, uncertain words are underlined with their confidence on hover, affected turns get a
+"check audio" chip, the call header shows a transcript-reliability percentage, and findings built
+on doubtful text are marked "verify audio".
+
+Tuning constants live at the top of [`server/pipeline/reliability.py`](server/pipeline/reliability.py).
 
 ---
 

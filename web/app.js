@@ -200,10 +200,26 @@ async function loadCall() {
         $("scoreBadge").className = `score-badge score-${scoreBand(score)}`;
     }
 
+    renderReliability(data.reliability);
     renderTranscript(data.transcript);
     renderQA(data.qa);
     renderMetrics(data.metrics);
     return data;
+}
+
+function renderReliability(rel) {
+    const el = $("reliabilityBadge");
+    if (!el) return;
+    if (!rel || !rel.available || rel.score == null) {
+        el.classList.add("hidden");
+        return;
+    }
+    const band = rel.score >= 95 ? "good" : rel.score >= 88 ? "mid" : "bad";
+    el.className = `chip reliability-${band}`;
+    el.textContent = `Transcript ${rel.score}%`;
+    el.title = `${rel.flagged} of ${rel.total} words uncertain · `
+        + `mean confidence ${(rel.mean_confidence * 100).toFixed(1)}%`;
+    el.classList.remove("hidden");
 }
 
 function renderTranscript(segments) {
@@ -215,15 +231,27 @@ function renderTranscript(segments) {
     panel.innerHTML = "";
     for (const seg of segments) {
         const el = document.createElement("div");
-        el.className = `turn role-${seg.role.toLowerCase().replace(/\s+/g, "-")}`;
+        el.className = `turn role-${seg.role.toLowerCase().replace(/\s+/g, "-")}`
+            + (seg.uncertain ? " turn-uncertain" : "");
         el.dataset.start = seg.start;
         el.dataset.end = seg.end;
         const words = seg.words
-            .map((w) => `<span class="w" data-start="${w.start}" data-end="${w.end}">${escapeHtml(w.word)}</span>`)
+            .map((w) => {
+                // Show doubt rather than hiding it: a reviewer needs to know which
+                // words the recogniser itself was unsure of before trusting a verdict.
+                const cls = "w" + (w.uncertain ? " w-uncertain" : "");
+                const title = w.confidence != null
+                    ? `confidence ${(w.confidence * 100).toFixed(1)}%` +
+                      (w.risk && w.risk.length ? ` · ${w.risk.join(", ")}` : "")
+                    : "";
+                return `<span class="${cls}" data-start="${num(w.start)}" data-end="${num(w.end)}"` +
+                       ` title="${escapeHtml(title)}">${escapeHtml(w.word)}</span>`;
+            })
             .join(" ");
         el.innerHTML = `
             <div class="turn-head">
                 <span class="speaker">${escapeHtml(seg.role)}</span>
+                ${seg.uncertain ? '<span class="chip warn-chip" title="Some words in this turn are uncertain">\u26a0 check audio</span>' : ""}
                 <span class="ts">${fmtTime(seg.start)}</span>
             </div>
             <div class="turn-text">${words}</div>`;
@@ -252,6 +280,7 @@ function renderQA(qa) {
                 <div class="finding severity-${severityClass(i.severity)}" data-seek="${num(i.timestamp)}">
                     <div class="finding-head"><strong>${escapeHtml(i.rule)}</strong>
                         <span class="chip">${escapeHtml(i.severity)}</span>
+                        ${i.verified?.transcript_uncertain ? '<span class="chip warn-chip" title="Evidence sits on words the recogniser was unsure of">\u26a0 verify audio</span>' : ""}
                         <span class="ts">${fmtTime(num(i.timestamp))}</span></div>
                     <blockquote>${escapeHtml(i.quote)}</blockquote>
                 </div>`).join("")

@@ -1,4 +1,5 @@
 import json
+import re
 import logging
 import os
 
@@ -130,24 +131,94 @@ def _call_ollama(prompt: str) -> dict:
     return json.loads(resp.json()["response"])
 
 
-def _verify_quotes(result: dict, segments: list[dict]) -> dict:
-    """Drop any finding whose quote is not actually in the transcript."""
-    haystack = " ".join(s["text"] for s in segments).lower()
+def _normalise(text: str) -> str:
+    return re.sub(r"[^a-z0-9 ]", " ", (text or "").lower())
 
-    def real(q: str) -> bool:
-        q = (q or "").strip().lower().strip('"')
-        return len(q) > 3 and q in haystack
 
-    before = len(result.get("objections", []))
-    result["objections"] = [o for o in result.get("objections", []) if real(o.get("quote"))]
+def _locate(quote: str, segments: list[dict]) -> dict | None:
+    """Find the segment a quote actually came from.
+
+    Matching is done on normalised text so punctuation differences do not
+    invalidate a genuine quote, but the words themselves must be present — a
+    paraphrase is not evidence.
+    """
+    needle = " ".join(_normalise(quote).split())
+    if len(needle) < 5:
+        return None
+    for seg in segments:
+        if needle in " ".join(_normalise(seg["text"]).split()):
+            return seg
+    return None
+
+
+def _check(finding: dict, segments: list[dict], kind: str) -> tuple[bool, dict]:
+    """Verify one finding against the transcript.
+
+    A finding survives only if its quote exists, its timestamp points at the turn
+    the quote came from, and the speaker it names is the one who said it. Findings
+    resting on words the ASR itself doubted are kept but marked for review rather
+    than silently trusted.
+    """
+    seg = _locate(finding.get("quote", ""), segments)
+    if seg is None:
+        return False, {"reason": "quote not found in transcript"}
+
+    verified = {"segment_start": round(seg["start"], 2), "speaker": seg["role"]}
+
+    # Repair rather than reject: the model routinely quotes correctly but guesses
+    # the time, and a correct finding should not be lost over a wrong number.
+    stated = finding.get("timestamp")
+    if not isinstance(stated, (int, float)) or abs(float(stated) - seg["start"]) > 5.0:
+        verified["timestamp_corrected_from"] = stated
+        finding["timestamp"] = round(seg["start"], 2)
+
+    claimed_speaker = finding.get("speaker")
+    if claimed_speaker and claimed_speaker.lower() not in seg["role"].lower():
+        verified["speaker_mismatch"] = claimed_speaker
+        finding["speaker"] = seg["role"]
+
+    if seg.get("uncertain"):
+        verified["transcript_uncertain"] = True
+        verified["segment_confidence"] = seg.get("confidence")
+        logger.info(f"{kind} finding rests on uncertain transcript at {seg['start']:.1f}s")
+
+    finding["verified"] = verified
+    return True, verified
+
+
+def _verify_evidence(result: dict, segments: list[dict]) -> dict:
+    """Make every finding prove itself against timestamped transcript evidence."""
+    dropped = 0
+    needs_review = 0
+
+    for kind in ("objections",):
+        kept = []
+        for item in result.get(kind, []):
+            ok, info = _check(item, segments, kind)
+            if ok:
+                kept.append(item)
+                needs_review += bool(info.get("transcript_uncertain"))
+            else:
+                dropped += 1
+        result[kind] = kept
+
     comp = result.setdefault("compliance", {})
-    comp["issues"] = [i for i in comp.get("issues", []) if real(i.get("quote"))]
-    dropped = before - len(result["objections"])
-    if dropped:
-        logger.warning(f"Dropped {dropped} objection(s) with unverifiable quotes.")
+    kept_issues = []
+    for issue in comp.get("issues", []):
+        ok, info = _check(issue, segments, "compliance")
+        if ok:
+            kept_issues.append(issue)
+            needs_review += bool(info.get("transcript_uncertain"))
+        else:
+            dropped += 1
+    comp["issues"] = kept_issues
 
     bi = result.get("buying_intent", {})
-    bi["evidence"] = [e for e in bi.get("evidence", []) if real(e)]
+    bi["evidence"] = [e for e in bi.get("evidence", []) if _locate(e, segments)]
+
+    if dropped:
+        logger.warning(f"Dropped {dropped} finding(s) that could not be evidenced.")
+    result["evidence_review_required"] = needs_review
     return result
 
 
@@ -164,4 +235,4 @@ def analyze(segments: list[dict], metrics: dict) -> dict:
     if any(i.get("severity") == "high" for i in result.get("compliance", {}).get("issues", [])):
         result["score"] = min(result.get("score", 0), 50)
 
-    return _verify_quotes(result, segments)
+    return _verify_evidence(result, segments)
