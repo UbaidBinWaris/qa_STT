@@ -11,8 +11,15 @@ const fmtTime = (s) => {
     return `${m}:${String(sec).padStart(2, "0")}`;
 };
 
-async function api(path, opts) {
-    const res = await fetch(API + path, opts);
+// ngrok's free tier serves an interstitial HTML page to browser-like requests,
+// which would arrive here instead of JSON. This header opts out of it.
+const BASE_HEADERS = { "ngrok-skip-browser-warning": "true" };
+
+async function api(path, opts = {}) {
+    const res = await fetch(API + path, {
+        ...opts,
+        headers: { ...BASE_HEADERS, ...(opts.headers || {}) },
+    });
     if (res.status === 401) {
         window.location.href = "/login.html";
         throw new Error("Authentication required");

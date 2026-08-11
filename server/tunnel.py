@@ -126,9 +126,9 @@ def main():
         [ngrok, "http", str(PORT), "--log", "stdout", "--log-format", "json"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
+    url = public_url(timeout=20)
 
     try:
-        url = public_url()
         if not url:
             print("Tunnel did not come up. Check `ngrok http 8000` manually.", flush=True)
             proc.terminate()
@@ -141,6 +141,9 @@ def main():
         print("\nAnyone with the URL still needs the password. Share both privately,")
         print("and stop the tunnel (Ctrl-C) when you are done — the recordings")
         print("contain customer names and phone numbers.")
+        print("\nFirst-time visitors see ngrok's 'You are about to visit' page and")
+        print("must click Visit Site once. That is a free-plan behaviour and cannot")
+        print("be disabled from here — `npm run tunnel:cf` avoids it entirely.")
         print("\nInspect traffic at http://127.0.0.1:4040\n", flush=True)
         proc.wait()
     except KeyboardInterrupt:

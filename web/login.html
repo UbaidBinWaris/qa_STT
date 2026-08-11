@@ -33,15 +33,20 @@ form.onsubmit = async (e) => {
     try {
         const res = await fetch("/api/login", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                // Opt out of ngrok's free-tier interstitial, which would otherwise
+                // be returned here as HTML instead of the JSON reply.
+                "ngrok-skip-browser-warning": "true",
+            },
             body: JSON.stringify({ password: document.getElementById("password").value }),
         });
-        if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (res.ok && data && data.authenticated) {
             window.location.href = "/";
             return;
         }
-        const data = await res.json().catch(() => ({}));
-        err.textContent = data.detail || "Sign in failed";
+        err.textContent = (data && data.detail) || `Sign in failed (HTTP ${res.status})`;
     } catch {
         err.textContent = "Server unreachable";
     }

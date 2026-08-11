@@ -73,18 +73,31 @@ npm run stop             # stop the server and release its VRAM
 PORT=8080 npm run dev    # run on a different port
 ```
 
-## Remote access (ngrok)
+## Remote access
 
 ```bash
-npm run tunnel
+npm run tunnel:cf   # Cloudflare — no warning page, no account  (recommended)
+npm run tunnel      # ngrok — needs a token, shows an interstitial on free plans
 ```
 
-Prints a public HTTPS URL and the password. Requires `ngrok` on PATH and a `.env` containing:
+Both print a public HTTPS URL and the password, and both require `APP_PASSWORD` in `.env`.
+
+**Why two.** ngrok's free plan serves a *"You are about to visit…"* interstitial to every
+first-time visitor. It cannot be disabled from this side: the documented bypass is a request
+header, which you cannot set on someone else's first page load, and an edge traffic policy
+does not help because the interstitial is served *before* the policy runs (tested). Options
+are to click through it once per visitor, pay for ngrok, or use Cloudflare instead —
+`trycloudflare.com` links open straight at the login page.
+
+`.env` keys:
 
 ```
-NGROK_AUTHTOKEN="..."
-APP_PASSWORD="..."
+APP_PASSWORD="..."      # required by both tunnels
+NGROK_AUTHTOKEN="..."   # only for `npm run tunnel`
 ```
+
+`npm run tunnel:cf` needs `cloudflared` on PATH; the script prints install instructions if
+it is missing.
 
 **Access control.** Authentication activates whenever `APP_PASSWORD` is set, and stays off
 when it isn't — so local use is frictionless while a tunnelled instance is never publicly
