@@ -85,18 +85,32 @@ r = s.get(f"{BASE}/api/search", params={"q": "x" * 500})
 check(r.status_code == 400, "overlong search rejected", r.status_code)
 
 # ---------- rate limiting ----------
+# Brute-force from a synthetic client address. Without this the suite locks out
+# whoever runs it: the server would see localhost, the same identity the operator
+# logs in with, and the UI would refuse them for the whole lockout window.
+ATTACKER = {"X-Forwarded-For": "203.0.113.99"}
 rl = requests.Session()
 codes = []
 for i in range(12):
-    codes.append(rl.post(f"{BASE}/api/login", json={"password": f"wrong{i}"}).status_code)
+    codes.append(rl.post(f"{BASE}/api/login", json={"password": f"wrong{i}"},
+                         headers=ATTACKER).status_code)
 check(429 in codes, f"login lockout triggers (codes: {codes[:10]})")
-after = rl.post(f"{BASE}/api/login", json={"password": PW})
+after = rl.post(f"{BASE}/api/login", json={"password": PW}, headers=ATTACKER)
 check(after.status_code == 429, "correct password still blocked while locked out", after.status_code)
 check(after.headers.get("Retry-After", "").isdigit(), "Retry-After header present",
       after.headers.get("Retry-After"))
 
 # an already-authenticated session must be unaffected by another IP's lockout
 check(s.get(f"{BASE}/api/calls").status_code == 200, "existing session unaffected by lockout")
+
+# ...and a different client must still be able to log in.
+fresh = requests.Session()
+other = fresh.post(f"{BASE}/api/login", json={"password": PW},
+                   headers={"X-Forwarded-For": "198.51.100.7"})
+check(other.status_code == 200, "other clients can still log in during a lockout",
+      other.status_code)
+check(requests.post(f"{BASE}/api/login", json={"password": PW}).status_code == 200,
+      "local operator not locked out by the suite")
 
 print(f"\n{'':3} {'check':46} detail")
 print("-" * 92)

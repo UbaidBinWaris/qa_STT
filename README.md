@@ -484,11 +484,11 @@ test-audio/           sample recordings
 ## Security
 
 ```bash
-npm test    # 55 checks across upload validation, limits, and security posture
+npm test    # 57 checks across upload validation, limits, and security posture
 ```
 
-Run against a live server. The security suite finishes by tripping the login rate
-limiter on purpose, so restart the server before running it again.
+Run against a live server. The security suite brute-forces from a synthetic client address,
+so tripping the lockout never locks out the operator running the tests.
 
 ### Browser hardening
 
@@ -516,8 +516,13 @@ delegated through `data-` attributes, and element sizing goes through the CSSOM 
 - Sessions are HttpOnly, `SameSite=Strict` (which removes CSRF as a concern), and `Secure`
   whenever the request arrived over TLS. Twelve-hour expiry, capped in number.
 - Failed logins are compared in constant time and rate limited per client — 8 attempts in
-  5 minutes triggers a 15-minute lockout with `Retry-After`. `X-Forwarded-For` is trusted only
-  when `TRUST_PROXY` is set, so the limiter cannot be bypassed with a forged header.
+  5 minutes triggers a 15-minute lockout with `Retry-After`.
+- `X-Forwarded-For` is believed only when the connection arrives from loopback (a tunnel or
+  reverse proxy on this machine put it there) or when `TRUST_PROXY` names an upstream proxy. A
+  request straight off the network cannot forge its way into another rate-limit bucket. This
+  matters behind a tunnel: cloudflared and ngrok connect over loopback, so without it every
+  remote user collapses into one identity and a single password-guesser would lock out the
+  whole team.
 - Page loads redirect to the sign-in screen; scripts and API calls receive `401` instead, so the
   browser never gets HTML where it expects JavaScript.
 - CORS is limited to explicit origins, methods, and headers — a wildcard with credentials would

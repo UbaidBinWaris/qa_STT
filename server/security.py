@@ -128,14 +128,24 @@ login_limiter = RateLimiter(
 )
 
 
-def client_key(request: Request) -> str:
-    """Identify the caller for rate limiting.
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
-    X-Forwarded-For is trusted only when TRUST_PROXY is set, since a client can
-    otherwise forge it to dodge the limiter.
+
+def client_key(request: Request) -> str:
+    """Identify the caller for rate limiting and the audit log.
+
+    X-Forwarded-For is only believed when the connection itself arrives from
+    loopback — meaning a tunnel or reverse proxy on this machine put it there —
+    or when TRUST_PROXY says an upstream proxy is in front. A request straight
+    off the network cannot forge its way into a different rate-limit bucket.
+
+    This matters behind a tunnel: cloudflared and ngrok connect over loopback, so
+    without it every remote user collapses into one identity and a single
+    password-guesser would lock out the entire team.
     """
-    if os.environ.get("TRUST_PROXY"):
+    peer = request.client.host if request.client else "unknown"
+    if os.environ.get("TRUST_PROXY") or peer in LOOPBACK:
         forwarded = request.headers.get("x-forwarded-for", "")
         if forwarded:
             return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    return peer

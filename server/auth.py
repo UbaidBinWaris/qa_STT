@@ -15,7 +15,7 @@ COOKIE = "qa_session"
 SESSION_TTL = 12 * 3600
 # Endpoints reachable without a session, so the login page can load and probe.
 PUBLIC_PATHS = {
-    "/login", "/login.html", "/login.js", "/styles.css",
+    "/login", "/login.html", "/login.js", "/styles.css", "/favicon.png",
     "/api/login", "/api/auth-status",
 }
 
