@@ -124,7 +124,7 @@ Measured on an **RTX 5070 Ti (16 GB, Blackwell)** with 8 kHz mono telephony reco
 | Transcription | 61 s call in **1.6 s** — ≈38× realtime |
 | Diarization | 173 s call in **0.8 s** |
 | Full pipeline incl. QA | 105 s call in **8 s** |
-| Sustained throughput | 96 min of audio in 3.6 min — **≈27× realtime** |
+| Sustained throughput | 171 min of audio in 9.0 min — **≈19× realtime** (with recovery and second-pass verification) |
 | Longest tested call | 20.7 min → 197 turns, 2 809 words |
 | Server start (warm) | **25 s** |
 | VRAM, idle | **3.3 GB** (speech models resident) |
@@ -575,9 +575,87 @@ discarding an otherwise sound finding; unlocatable quotes are dropped. A finding
 rests on flagged words is kept but marked `transcript_uncertain`, and the count surfaces as
 `evidence_review_required`.
 
-**In the UI**, uncertain words are underlined with their confidence on hover, affected turns get a
-"check audio" chip, the call header shows a transcript-reliability percentage, and findings built
-on doubtful text are marked "verify audio".
+### Recovering dropped speech
+
+Diarization regularly finds a speaker talking where the transcript has nothing at all. Measured
+on the test corpus, word density **halves during cross-talk** — 1.6 words/s inside overlap
+against 3.0 words/s outside — and several turns produced no text whatever.
+
+Those turns are re-decoded in isolation. A short turn loses out in a long decode because the
+model weighs it against minutes of surrounding audio; given only its own seconds, it usually
+comes back. Across the corpus this recovered **110 words from 41 turns** that had been silently
+dropped. Recovered words carry no confidence score, are always marked uncertain, and are shown
+with a dashed underline.
+
+**What cannot be recovered is marked instead.** Where two people genuinely speak at once, a
+single mixed mono recording does not contain a separable second voice, and nothing in this
+pipeline can extract one. The region is rendered in the transcript as an explicit cross-talk
+gap rather than left blank — silence there means "we could not hear it", not "nobody spoke". A
+customer objection lost under the agent's voice must not vanish from the record without trace.
+
+> Separating simultaneous speakers would need a source-separation model and, realistically,
+> stereo recordings with one speaker per channel. If your telephony can deliver dual-channel
+> audio, that single change removes the problem entirely — each channel transcribes cleanly on
+> its own.
+
+### Audio enhancement was measured and rejected
+
+Normalising or denoising the audio is the obvious response to an unclear caller. It was tested
+across six filter chains (`loudnorm`, `dynaudnorm`, `speechnorm`, band-pass, and FFT denoise
+combinations) and **not adopted**, because the results do not support it:
+
+| variant | words | mean confidence | words below 0.95 |
+|---|---|---|---|
+| baseline | 428 | 0.9872 | 5 |
+| loudnorm | +12 | −0.0016 | +9 |
+| dynaudnorm | +9 | −0.0028 | +9 |
+| denoise+dyn | +17 | −0.0025 | +11 |
+
+Every chain produced *more* words but *lower* confidence and two to three times as many doubtful
+words — the signature of either recovering quiet speech or inventing words from amplified noise,
+and without ground truth the two are indistinguishable. Applied to the recovery clips
+specifically, enhancement recovered nothing extra (4 turns either way) and cost a word on one
+turn that decoded correctly raw: `"Can you work with"` became `"You work with"`.
+
+Enhancement will be reconsidered when there is a labelled evaluation set to measure it against.
+Until then, adding it would trade a measurable signal for an unmeasurable guess.
+
+### Second-pass verification
+
+Flagged spans — and only those — are decoded a second time and the two readings compared. A
+second opinion is worth something only if it is independent, so the second pass differs in two
+ways at once:
+
+| | first pass | second pass |
+|---|---|---|
+| search | greedy (`greedy_batch`) | beam 4 (`malsd_batch`) |
+| context | whole call, or a 180 s window | a few seconds around the span |
+
+Agreement is measured over the whole padded window rather than the span alone — a one-word span
+judged against nine seconds of beam output disagrees for trivial reasons. A *localised*
+difference, where the surrounding words match but the span's own words are absent, is the signal
+worth acting on:
+
+| verdict | meaning |
+|---|---|
+| `confirmed` | both decoders produced the span's words — the flag is cleared |
+| `conflict` | the region matches but the span's words differ — **human check required** |
+| `likely` | the whole window disagrees, so the second decode is itself unreliable |
+
+**A conflict is never auto-resolved.** Nothing in the pipeline can tell which reading is correct,
+so the span keeps both and asks for a human with the audio. Silently picking one would trade a
+visible doubt for an invisible error.
+
+Real catches on a test call: `24` against the beam's *"date is thirtieth"*, and `BGNE.` against
+*"By the way…"*. Cost: **1.0 s for 20 spans**, because only the doubtful audio is re-decoded.
+
+Note that TDT beam search cannot preserve alignments, so it produces no timestamps or confidence
+— which is fine, since the second pass only needs to answer "what words are in this audio?".
+
+**In the UI**, uncertain words are underlined with their confidence on hover, conflicting words
+are highlighted in red with both readings, affected turns get a "check audio" chip, the call
+header shows transcript reliability plus a disputed-word count, and findings built on doubtful
+text are marked "verify audio".
 
 Tuning constants live at the top of [`server/pipeline/reliability.py`](server/pipeline/reliability.py).
 

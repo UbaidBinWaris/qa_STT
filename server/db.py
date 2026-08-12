@@ -101,12 +101,14 @@ def _migrate(conn: sqlite3.Connection):
             conn.execute(f"ALTER TABLE calls ADD COLUMN {column} {ddl}")
 
     seg_cols = {row["name"] for row in conn.execute("PRAGMA table_info(segments)")}
-    for column, ddl in (("confidence", "REAL"), ("uncertain", "INTEGER NOT NULL DEFAULT 0")):
+    for column, ddl in (("confidence", "REAL"), ("uncertain", "INTEGER NOT NULL DEFAULT 0"),
+                        ("crosstalk", "INTEGER NOT NULL DEFAULT 0")):
         if column not in seg_cols:
             conn.execute(f"ALTER TABLE segments ADD COLUMN {column} {ddl}")
 
     word_cols = {row["name"] for row in conn.execute("PRAGMA table_info(words)")}
-    for column, ddl in (("uncertain", "INTEGER NOT NULL DEFAULT 0"), ("risk", "TEXT")):
+    for column, ddl in (("uncertain", "INTEGER NOT NULL DEFAULT 0"), ("risk", "TEXT"),
+                        ("verdict", "TEXT"), ("recovered", "INTEGER NOT NULL DEFAULT 0")):
         if column not in word_cols:
             conn.execute(f"ALTER TABLE words ADD COLUMN {column} {ddl}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_sha256 ON calls(sha256)")
@@ -191,7 +193,10 @@ def set_failed(call_id: str, error: str):
 def set_completed(call_id: str):
     conn = connect()
     conn.execute(
-        "UPDATE calls SET status='completed', stage='done', progress=100, completed_at=? WHERE id=?",
+        # Clear any error from a previous attempt, or a reprocessed call keeps
+        # reporting a failure it has already recovered from.
+        "UPDATE calls SET status='completed', stage='done', progress=100, "
+        "error=NULL, completed_at=? WHERE id=?",
         (time.time(), call_id),
     )
     conn.commit()
@@ -206,20 +211,22 @@ def save_transcript(call_id: str, segments: list[dict]):
     for idx, seg in enumerate(segments):
         cur = conn.execute(
             """INSERT INTO segments (call_id, idx, speaker, role, start, end, text,
-                                     confidence, uncertain)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                                     confidence, uncertain, crosstalk)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (call_id, idx, seg["speaker"], seg["role"], seg["start"], seg["end"],
-             seg["text"], seg.get("confidence"), int(bool(seg.get("uncertain")))),
+             seg["text"], seg.get("confidence"), int(bool(seg.get("uncertain"))),
+             int(bool(seg.get("crosstalk")))),
         )
         seg_id = cur.lastrowid
         conn.executemany(
             """INSERT INTO words (call_id, segment_id, word, start, end, confidence,
-                                  uncertain, risk)
-               VALUES (?,?,?,?,?,?,?,?)""",
+                                  uncertain, risk, verdict, recovered)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             [
                 (call_id, seg_id, w["word"], w["start"], w["end"], w.get("confidence"),
                  int(bool(w.get("uncertain"))),
-                 ",".join(w.get("risk") or []) or None)
+                 ",".join(w.get("risk") or []) or None,
+                 w.get("verdict"), int(bool(w.get("recovered"))))
                 for w in seg["words"]
             ],
         )
@@ -296,6 +303,8 @@ def get_transcript(call_id: str) -> list[dict]:
                 "confidence": w["confidence"],
                 "uncertain": bool(w["uncertain"]),
                 "risk": w["risk"].split(",") if w["risk"] else [],
+                "verdict": w["verdict"],
+                "recovered": bool(w["recovered"]),
             }
         )
     return [
@@ -308,6 +317,7 @@ def get_transcript(call_id: str) -> list[dict]:
             "text": s["text"],
             "confidence": s["confidence"],
             "uncertain": bool(s["uncertain"]),
+            "crosstalk": bool(s["crosstalk"]),
             "words": by_seg.get(s["id"], []),
         }
         for s in segs

@@ -43,6 +43,87 @@ def _enable_word_confidence(model):
     model.change_decoding_strategy(cfg)
 
 
+def _disable_word_confidence(model):
+    """Plain greedy decoding with timestamps but no confidence."""
+    from omegaconf import OmegaConf, open_dict
+
+    cfg = model.cfg.decoding
+    with open_dict(cfg):
+        cfg.strategy = "greedy_batch"
+        cfg.compute_timestamps = True
+        cfg.preserve_alignments = False
+        cfg.confidence_cfg = OmegaConf.create({
+            "preserve_frame_confidence": False,
+            "preserve_token_confidence": False,
+            "preserve_word_confidence": False,
+        })
+    model.change_decoding_strategy(cfg)
+
+
+def decode(model, path: str):
+    """Transcribe one file, degrading to no-confidence rather than failing.
+
+    NeMo's word-confidence aggregation raises when its own word list and
+    confidence list disagree in length, which happens on certain contractions
+    ("write'em") and hyphenated words. It killed whole 20-minute calls. Confidence
+    is a helpful signal, not the product: if it cannot be computed for a window,
+    the transcript for that window is still worth having.
+    """
+    with _lock:
+        try:
+            return model.transcribe([path], timestamps=True, verbose=False)[0]
+        except RuntimeError as e:
+            if "confidence" not in str(e).lower():
+                raise
+            logger.warning(
+                "NeMo could not aggregate word confidence for this window; "
+                "re-decoding it without confidence."
+            )
+            _disable_word_confidence(model)
+            try:
+                return model.transcribe([path], timestamps=True, verbose=False)[0]
+            finally:
+                _enable_word_confidence(model)
+
+
+def use_verification_decoder(model):
+    """Switch to beam search for the second-pass check.
+
+    TDT beam ('malsd_batch') cannot preserve alignments, so it cannot produce
+    timestamps or confidence — which is fine here, because the second pass only
+    needs to answer "what words are in this audio?". Being a different search
+    algorithm is precisely what makes its answer worth comparing.
+    """
+    from omegaconf import OmegaConf, open_dict
+
+    cfg = model.cfg.decoding
+    with open_dict(cfg):
+        cfg.strategy = "malsd_batch"
+        cfg.preserve_alignments = False
+        # transcribe(timestamps=True) latches this on and never turns it back off,
+        # so the beam decoder would still try to build timestamps it cannot
+        # produce, failing inside NeMo rather than here.
+        cfg.compute_timestamps = False
+        cfg.confidence_cfg = OmegaConf.create({
+            "preserve_frame_confidence": False,
+            "preserve_token_confidence": False,
+            "preserve_word_confidence": False,
+        })
+        cfg.beam = OmegaConf.create({"beam_size": 4, "return_best_hypothesis": True})
+    model.change_decoding_strategy(cfg)
+
+
+def use_primary_decoder(model):
+    """Restore greedy decoding with timestamps and word confidence."""
+    from omegaconf import open_dict
+
+    cfg = model.cfg.decoding
+    with open_dict(cfg):
+        cfg.strategy = "greedy_batch"
+        cfg.compute_timestamps = True
+    _enable_word_confidence(model)
+
+
 def load():
     global _model
     with _lock:
@@ -134,8 +215,7 @@ def _transcribe_chunked(wav_path: str) -> list[dict]:
             )
             part = os.path.join(tmp_dir, f"chunk_{idx}.wav")
             sf.write(part, data, sr)
-            with _lock:
-                hyp = model.transcribe([part], timestamps=True, verbose=False)[0]
+            hyp = decode(model, part)
             os.remove(part)
 
             new = _words_of(hyp, offset)
@@ -175,8 +255,7 @@ def transcribe(wav_path: str) -> tuple[str, list[dict]]:
         words = _transcribe_chunked(wav_path)
     else:
         model = load()
-        with _lock:
-            hyp = model.transcribe([wav_path], timestamps=True, verbose=False)[0]
+        hyp = decode(model, wav_path)
         words = _words_of(hyp)
         del hyp
         _release()

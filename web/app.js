@@ -201,7 +201,7 @@ async function loadCall() {
     }
 
     renderReliability(data.reliability);
-    renderTranscript(data.transcript);
+    renderTranscript(data.transcript, data.reliability?.recovery?.crosstalk_regions || []);
     renderQA(data.qa);
     renderMetrics(data.metrics);
     return data;
@@ -214,22 +214,57 @@ function renderReliability(rel) {
         el.classList.add("hidden");
         return;
     }
-    const band = rel.score >= 95 ? "good" : rel.score >= 88 ? "mid" : "bad";
+    const v = rel.verification || {};
+    const conflicts = rel.conflicts || 0;
+    const band = conflicts ? "bad" : rel.score >= 95 ? "good" : rel.score >= 88 ? "mid" : "bad";
     el.className = `chip reliability-${band}`;
-    el.textContent = `Transcript ${rel.score}%`;
+    el.textContent = conflicts
+        ? `Transcript ${rel.score}% · ${conflicts} disputed`
+        : `Transcript ${rel.score}%`;
+    const rec = rel.recovery || {};
     el.title = `${rel.flagged} of ${rel.total} words uncertain · `
-        + `mean confidence ${(rel.mean_confidence * 100).toFixed(1)}%`;
+        + `mean confidence ${(rel.mean_confidence * 100).toFixed(1)}%`
+        + (v.checked ? ` · second pass: ${v.confirmed} confirmed, ${v.conflict} conflicting `
+                       + `(${v.seconds}s)` : "")
+        + (rec.recovered ? ` · recovered ${rec.recovered_words} word(s) from `
+                           + `${rec.recovered} dropped turn(s)` : "")
+        + (rec.crosstalk_seconds ? ` · ${rec.crosstalk_seconds}s cross-talk` : "");
     el.classList.remove("hidden");
 }
 
-function renderTranscript(segments) {
+function renderTranscript(segments, crosstalk = []) {
     const panel = $("panel-transcript");
     if (!segments.length) {
         panel.innerHTML = `<p class="muted">Transcript will appear when processing completes.</p>`;
         return;
     }
     panel.innerHTML = "";
+
+    // Cross-talk that produced no words leaves a hole in the transcript. Rendering
+    // the hole is the point: silence here means "we could not hear it", not
+    // "nobody spoke", and a customer objection lost under the agent's voice must
+    // not simply vanish from the record.
+    const gaps = crosstalk.filter((c) =>
+        !segments.some((s) => s.start < c.end && s.end > c.start));
+
+    const renderGap = (c) => {
+        const el = document.createElement("div");
+        el.className = "turn turn-crosstalk";
+        el.dataset.start = num(c.start);
+        el.dataset.seek = num(c.start);
+        el.innerHTML = `
+            <div class="turn-head">
+                <span class="speaker">Cross-talk</span>
+                <span class="ts">${fmtTime(num(c.start))}</span>
+            </div>
+            <div class="turn-text">\u26a0 Both speakers talking at once for
+                ${(num(c.end) - num(c.start)).toFixed(1)}s — speech here could not be
+                transcribed. Listen to the audio.</div>`;
+        panel.appendChild(el);
+    };
+
     for (const seg of segments) {
+        while (gaps.length && gaps[0].start < seg.start) renderGap(gaps.shift());
         const el = document.createElement("div");
         el.className = `turn role-${seg.role.toLowerCase().replace(/\s+/g, "-")}`
             + (seg.uncertain ? " turn-uncertain" : "");
@@ -239,10 +274,18 @@ function renderTranscript(segments) {
             .map((w) => {
                 // Show doubt rather than hiding it: a reviewer needs to know which
                 // words the recogniser itself was unsure of before trusting a verdict.
-                const cls = "w" + (w.uncertain ? " w-uncertain" : "");
-                const title = w.confidence != null
-                    ? `confidence ${(w.confidence * 100).toFixed(1)}%` +
-                      (w.risk && w.risk.length ? ` · ${w.risk.join(", ")}` : "")
+                // Three states, not two: a checked-and-confirmed word reads
+                // differently from one the two decoders disagreed about.
+                const conflict = w.verdict === "conflict";
+                const cls = "w" + (conflict ? " w-conflict"
+                    : w.recovered ? " w-recovered"
+                    : w.uncertain ? " w-uncertain" : "");
+                const title = w.recovered
+                    ? "Recovered from audio the first pass missed — verify"
+                    : w.confidence != null
+                    ? (conflict ? "Decoders disagreed here — check the audio · " : "")
+                      + `confidence ${(w.confidence * 100).toFixed(1)}%`
+                      + (w.risk && w.risk.length ? ` · ${w.risk.join(", ")}` : "")
                     : "";
                 return `<span class="${cls}" data-start="${num(w.start)}" data-end="${num(w.end)}"` +
                        ` title="${escapeHtml(title)}">${escapeHtml(w.word)}</span>`;
@@ -251,13 +294,15 @@ function renderTranscript(segments) {
         el.innerHTML = `
             <div class="turn-head">
                 <span class="speaker">${escapeHtml(seg.role)}</span>
-                ${seg.uncertain ? '<span class="chip warn-chip" title="Some words in this turn are uncertain">\u26a0 check audio</span>' : ""}
+                ${seg.crosstalk ? '<span class="chip warn-chip" title="Both speakers talking at once \u2014 words may be missing from this turn">\u26a0 cross-talk, may be incomplete</span>' : ""}
+                ${seg.uncertain && !seg.crosstalk ? '<span class="chip warn-chip" title="Some words in this turn are uncertain">\u26a0 check audio</span>' : ""}
                 <span class="ts">${fmtTime(seg.start)}</span>
             </div>
             <div class="turn-text">${words}</div>`;
         el.onclick = () => seek(seg.start);
         panel.appendChild(el);
     }
+    while (gaps.length) renderGap(gaps.shift());
 }
 
 function renderQA(qa) {

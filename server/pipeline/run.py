@@ -2,7 +2,7 @@ import logging
 import os
 
 import db
-from pipeline import align, asr, audio, diarize, metrics, qa, reliability
+from pipeline import align, asr, audio, diarize, metrics, qa, recover, reliability, verify
 
 logger = logging.getLogger("pipeline.run")
 
@@ -26,19 +26,36 @@ def process(call_id: str):
     _, words = asr.transcribe(wav)
     logger.info(f"[{call_id}] {len(words)} words")
 
+    # Diarization comes before the reliability work now: knowing who was speaking
+    # is what reveals the turns that produced no text at all.
+    db.set_progress(call_id, "diarizing", 40)
+    turns = diarize.diarize(wav)
+    logger.info(f"[{call_id}] {len(turns)} speaker turns")
+
+    db.set_progress(call_id, "recovering", 50)
+    recovery = recover.recover_dropped(wav, words, turns)
+
     # Mark doubtful words before alignment, so the flags travel with each word
     # into its speaker turn and on into the QA evidence check.
     report = reliability.analyse(words)
+    report["recovery"] = recovery
 
-    db.set_progress(call_id, "diarizing", 50)
-    turns = diarize.diarize(wav)
-    logger.info(f"[{call_id}] {len(turns)} speaker turns")
+    # Only the doubtful spans are decoded again, so the cost scales with how much
+    # of the call was actually in question rather than with its length.
+    db.set_progress(call_id, "verifying", 60)
+    report["verification"] = verify.verify_spans(wav, report["spans"], words)
+    verify.apply_to_words(words, report["spans"])
+    report["flagged"] = sum(1 for w in words if w.get("uncertain"))
+    report["conflicts"] = sum(1 for w in words if w.get("conflict"))
 
     db.set_progress(call_id, "aligning", 65)
     segments = align.build(words, turns, duration)
 
     for seg in segments:
         seg["confidence"], seg["uncertain"] = reliability.segment_confidence(seg["words"])
+    # Cross-talk is marked after segmentation so a turn spoken over is shown as
+    # possibly incomplete rather than quietly treated as everything that was said.
+    recover.mark_crosstalk(segments, recovery["crosstalk_regions"])
 
     db.set_progress(call_id, "analyzing", 75)
     stats = metrics.compute(segments, duration)

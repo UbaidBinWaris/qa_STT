@@ -147,7 +147,11 @@ def analyse(words: list[dict]) -> dict:
         # median to warrant a check, because the cost of being wrong is higher.
         risky_and_soft = bool(tags) and conf is not None and conf < median
         w["risk"] = tags
-        w["uncertain"] = bool(low or (risky_and_soft and conf <= ABS_CEILING))
+        # A recovered word came from audio the main pass produced nothing for, so
+        # it is always worth a listen even though it carries no confidence score.
+        w["uncertain"] = bool(
+            low or (risky_and_soft and conf <= ABS_CEILING) or w.get("recovered")
+        )
 
     flagged = [w for w in words if w["uncertain"]]
     spans = _spans(words)
@@ -216,8 +220,11 @@ def segment_confidence(segment_words: list[dict]) -> tuple[float | None, bool]:
     """
     confs = [w["confidence"] for w in segment_words if w.get("confidence") is not None]
     doubtful = [w for w in segment_words if w.get("uncertain")]
+    # A conflict between the two decoders always surfaces: it is the one case
+    # where we know the transcript may be wrong rather than merely unsure.
     flagged = bool(
-        any(c < ABS_FLOOR for c in confs)
+        any(w.get("conflict") for w in segment_words)
+        or any(c < ABS_FLOOR for c in confs)
         or any(w.get("risk") for w in doubtful)
         or len(doubtful) >= 3
     )

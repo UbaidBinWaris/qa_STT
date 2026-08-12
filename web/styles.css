@@ -188,6 +188,25 @@ blockquote { font-size: 13px; color: var(--text-secondary); font-style: italic; 
     border-bottom: 2px dotted var(--warn);
     cursor: help;
 }
+.w-conflict {
+    /* Stronger than uncertainty: the two decoders read this audio differently,
+       so the word may be wrong rather than merely unsure. */
+    background: rgba(239, 68, 68, .18);
+    border-bottom: 2px solid var(--danger);
+    border-radius: 3px;
+    cursor: help;
+}
+.w-recovered {
+    /* Speech the first pass missed entirely, decoded from the audio afterwards. */
+    border-bottom: 2px dashed var(--accent-blue);
+    cursor: help;
+}
+.turn-crosstalk {
+    border-left-color: var(--danger);
+    background: rgba(239, 68, 68, .07);
+    font-style: italic;
+}
+.turn-crosstalk .speaker { color: var(--danger); }
 .turn-uncertain { border-left-color: var(--warn); }
 .warn-chip { background: rgba(245, 158, 11, .15); color: var(--warn); border: 1px solid rgba(245,158,11,.35); }
 .reliability-good { color: var(--accent); border: 1px solid rgba(118,185,0,.4); }
