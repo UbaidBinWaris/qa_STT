@@ -176,6 +176,8 @@ Open **http://localhost:8000**.
 | `npm run dev` | Start the server (stops any previous instance first) |
 | `npm run stop` | Stop the server and release its VRAM |
 | `npm run dev -- --reinstall` | Force a dependency reinstall |
+| `npm test` | Upload, limits and security suites (55 checks) |
+| `npm run eval` | Recognition robustness — needs no labelled data |
 | `PORT=8080 npm run dev` | Run on a different port |
 
 `npm run dev` is safe to re-run at any time. Every launch:
@@ -599,27 +601,34 @@ customer objection lost under the agent's voice must not vanish from the record 
 > audio, that single change removes the problem entirely — each channel transcribes cleanly on
 > its own.
 
-### Audio enhancement was measured and rejected
+### Audio normalisation, measured without a dataset
 
-Normalising or denoising the audio is the obvious response to an unclear caller. It was tested
-across six filter chains (`loudnorm`, `dynaudnorm`, `speechnorm`, band-pass, and FFT denoise
-combinations) and **not adopted**, because the results do not support it:
+Accuracy questions normally need ground truth, and there is none for these calls. `npm run eval`
+sidesteps that: transcribe a call clean and treat that as the reference, damage the audio in a
+known way, then measure how far each repair chain brings the transcript back. It cannot report
+absolute accuracy, but it answers the question that matters — *given audio that got worse, does
+this filter recover it?*
 
-| variant | words | mean confidence | words below 0.95 |
-|---|---|---|---|
-| baseline | 428 | 0.9872 | 5 |
-| loudnorm | +12 | −0.0016 | +9 |
-| dynaudnorm | +9 | −0.0028 | +9 |
-| denoise+dyn | +17 | −0.0025 | +11 |
+Mean word error rate across three calls:
 
-Every chain produced *more* words but *lower* confidence and two to three times as many doubtful
-words — the signature of either recovering quiet speech or inventing words from amplified noise,
-and without ground truth the two are indistinguishable. Applied to the recovery clips
-specifically, enhancement recovered nothing extra (4 turns either way) and cost a word on one
-turn that decoded correctly raw: `"Can you work with"` became `"You work with"`.
+| degradation | none | speechnorm | loudnorm | dynaudnorm | denoise |
+|---|---|---|---|---|---|
+| quiet −20 dB | 4.4% | **1.8%** | 3.7% | 3.1% | 8.3% |
+| quiet −12 dB | 3.3% | **2.2%** | 4.0% | 3.7% | 6.8% |
+| noise light | 8.8% | **6.6%** | 7.4% | 8.5% | 6.9% |
+| noise heavy | 12.0% | 11.2% | 10.6% | 10.4% | 10.8% |
+| clipped | 5.2% | **4.5%** | 5.1% | 4.8% | 6.3% |
 
-Enhancement will be reconsidered when there is a labelled evaluation set to measure it against.
-Until then, adding it would trade a measurable signal for an unmeasurable guess.
+`speechnorm` recovers **26–58% of the error** on quiet or noisy input and moves an already-clean
+transcript by about 2%, so it is enabled by default. Real recordings here measure −22 to −26 dB
+mean volume, which makes the quiet cases the normal ones rather than the edge.
+
+**Denoising is deliberately not used.** It made quiet audio substantially *worse* — 8.3% against
+4.4% — which is the opposite of what it promises.
+
+An earlier version of this document rejected normalisation outright, on the strength of
+confidence scores rather than error rates. That was the wrong instrument: confidence fell while
+accuracy improved. Disable with `AUDIO_NORMALISE=0`.
 
 ### Second-pass verification
 

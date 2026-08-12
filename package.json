@@ -1,7 +1,7 @@
 {
   "name": "qa-stt-call-intelligence",
   "version": "2.0.0",
-  "description": "Local sales call QA platform — Parakeet TDT v3 ASR, Sortformer diarization, Qwen3 QA scorecards",
+  "description": "Local sales call QA platform \u2014 Parakeet TDT v3 ASR, Sortformer diarization, Qwen3 QA scorecards",
   "main": "server/start_server.py",
   "scripts": {
     "dev": "python3 server/start_server.py",
@@ -10,7 +10,8 @@
     "tunnel": "python3 server/tunnel.py",
     "tunnel:cf": "python3 server/tunnel_cf.py",
     "tunnel:ngrok": "python3 server/tunnel.py",
-    "test": "server/venv/bin/python tests/run.py"
+    "test": "server/venv/bin/python tests/run.py",
+    "eval": "server/venv/bin/python tests/eval_robustness.py"
   },
   "keywords": [
     "speech-to-text",
