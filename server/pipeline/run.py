@@ -58,7 +58,8 @@ def process(call_id: str):
     recover.mark_crosstalk(segments, recovery["crosstalk_regions"])
 
     db.set_progress(call_id, "analyzing", 75)
-    stats = metrics.compute(segments, duration)
+    interruptions = recover.interruption_events(turns)
+    stats = metrics.compute(segments, duration, interruptions)
 
     result = None
     try:
@@ -69,7 +70,7 @@ def process(call_id: str):
     # The LLM sees the whole conversation, so it overrules the heuristic on roles.
     if result and result.get("agent_speaker"):
         segments = align.apply_role_override(segments, result["agent_speaker"])
-        stats = metrics.compute(segments, duration)
+        stats = metrics.compute(segments, duration, interruptions)
 
     db.set_progress(call_id, "saving", 95)
     db.save_transcript(call_id, segments)

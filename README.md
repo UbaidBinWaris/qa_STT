@@ -31,6 +31,7 @@ Everything runs on one workstation. No cloud, no API keys, no customer data leav
 - [Project layout](#project-layout)
 - [Security](#security)
 - [Transcript reliability](#transcript-reliability)
+- [Known defects found by audit](#known-defects-found-by-audit)
 - [Accuracy safeguards](#accuracy-safeguards)
 - [Troubleshooting](#troubleshooting)
 
@@ -44,7 +45,7 @@ For every recording, the system answers the questions a QA reviewer would ask:
 |---|---|
 | Who spoke, and when? | Sortformer diarization → Agent / Customer roles |
 | What exactly was said? | Parakeet TDT v3, word-level timestamps |
-| Who dominated the call? | Talk ratio, interruptions, dead air, words per minute |
+| Who dominated the call? | Talk ratio, interruptions, overlap, dead air, words per minute |
 | Did the customer show intent? | LLM scorecard with quoted evidence |
 | Was the script followed? | Identity verification and disclosure checks |
 | Were there TCPA issues? | Compliance findings, each tied to a timestamp |
@@ -658,6 +659,32 @@ header shows transcript reliability plus a disputed-word count, and findings bui
 text are marked "verify audio".
 
 Tuning constants live at the top of [`server/pipeline/reliability.py`](server/pipeline/reliability.py).
+
+---
+
+## Known defects found by audit
+
+A systematic audit of the pipeline turned up two things worth recording, one fixed and one
+deliberately left alone.
+
+**Interruption counting never worked.** Every call ever processed reported `interruptions: {}`.
+The check asked whether one segment ended after the next began — but segments are built from
+consecutive words and so never overlap, making the test arithmetically dead. Interruptions are
+now derived from the diarized turns, which do overlap, and attributed to whoever started second.
+On a 10-minute call this surfaces 39 agent interruptions against 21 by the customer, along with
+total and longest overlap. The same root cause — overlap information being discarded at
+alignment — was behind cross-talk speech going missing.
+
+**Single-word turns are correct, not a defect.** 20% of turns contain one word, and 87% of those
+sit between two turns by the other speaker, which looks like diarization thrash. Inspection
+showed they are real: `"Hello."`, `"Fine."`, `"Eric."` — customers answering. Smoothing them away
+would have destroyed exactly the one-word answers ("No.", "Yes.") that matter most to a QA
+verdict, so the behaviour is left as it is.
+
+Verified sound in the same audit: QA scoring is deterministic (identical scores, compliance
+issues and objections across repeated runs of the same audio), the full-text index matches the
+segment table exactly, talk ratios sum to 100%, and no orphaned audio or output files accumulate
+on disk.
 
 ---
 

@@ -57,6 +57,36 @@ def find_overlaps(turns: list[dict]) -> list[dict]:
     return merged
 
 
+def interruption_events(turns: list[dict]) -> list[dict]:
+    """Who started speaking while someone else still held the floor.
+
+    This has to be read from the diarized turns, which genuinely overlap. The
+    aligned segments cannot answer it: they are built from consecutive words, so
+    one always starts at or after the previous one ends, and any overlap test on
+    them is arithmetically dead.
+    """
+    events = []
+    for i, a in enumerate(turns):
+        for b in turns[i + 1:]:
+            if b["start"] >= a["end"]:
+                break
+            if b["speaker"] == a["speaker"]:
+                continue
+            overlap = min(a["end"], b["end"]) - b["start"]
+            if overlap < MIN_OVERLAP:
+                continue
+            # The later starter is the one who cut in.
+            interrupter, interrupted = (b, a) if b["start"] >= a["start"] else (a, b)
+            events.append({
+                "speaker": interrupter["speaker"],
+                "interrupted": interrupted["speaker"],
+                "start": round(interrupter["start"], 2),
+                "duration": round(overlap, 2),
+            })
+    events.sort(key=lambda e: e["start"])
+    return events
+
+
 def _empty_turns(words: list[dict], turns: list[dict]) -> list[dict]:
     out = []
     for t in turns:

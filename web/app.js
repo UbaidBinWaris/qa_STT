@@ -394,7 +394,15 @@ function renderMetrics(m) {
             ${stat("Longest pause", `${num(m.longest_silence)}s`)}
             ${stat("Agent interrupts", num(m.interruptions?.Agent))}
             ${stat("Customer interrupts", num(m.interruptions?.Customer))}
+            ${stat("Overlap total", `${num(m.overlap_total)}s`)}
+            ${stat("Longest overlap", `${num(m.longest_overlap)}s`)}
         </div>
+        ${(m.interruption_events || []).length ? `<h3>Interruptions</h3>
+        <div class="pill-row">${m.interruption_events.map((e) =>
+            `<span class="chip clickable" data-seek="${num(e.start)}"
+                title="${escapeHtml(e.speaker)} cut in on ${escapeHtml(e.interrupted)}">`
+            + `${fmtTime(num(e.start))} · ${escapeHtml(e.speaker)} ${num(e.duration)}s</span>`
+        ).join("")}</div>` : ""}
         <h3>Dead Air</h3>
         ${(m.dead_air_events || []).length
             ? `<div class="pill-row">${m.dead_air_events.map((d) =>
