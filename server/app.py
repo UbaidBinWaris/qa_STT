@@ -153,6 +153,7 @@ def get_call(call_id: str):
         "metrics": db.get_metrics(call_id),
         "qa": db.get_qa(call_id),
         "reliability": db.get_reliability(call_id),
+        "prosody": db.get_prosody(call_id),
     }
 
 

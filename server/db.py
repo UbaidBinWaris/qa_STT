@@ -96,13 +96,14 @@ def _migrate(conn: sqlite3.Connection):
     """Add columns introduced after a database was first created."""
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(calls)")}
     for column, ddl in (("size_bytes", "INTEGER"), ("sha256", "TEXT"),
-                        ("reliability_score", "REAL"), ("reliability", "TEXT")):
+                        ("reliability_score", "REAL"), ("reliability", "TEXT"),
+                        ("prosody", "TEXT")):
         if column not in existing:
             conn.execute(f"ALTER TABLE calls ADD COLUMN {column} {ddl}")
 
     seg_cols = {row["name"] for row in conn.execute("PRAGMA table_info(segments)")}
     for column, ddl in (("confidence", "REAL"), ("uncertain", "INTEGER NOT NULL DEFAULT 0"),
-                        ("crosstalk", "INTEGER NOT NULL DEFAULT 0")):
+                        ("crosstalk", "INTEGER NOT NULL DEFAULT 0"), ("prosody", "TEXT")):
         if column not in seg_cols:
             conn.execute(f"ALTER TABLE segments ADD COLUMN {column} {ddl}")
 
@@ -211,11 +212,11 @@ def save_transcript(call_id: str, segments: list[dict]):
     for idx, seg in enumerate(segments):
         cur = conn.execute(
             """INSERT INTO segments (call_id, idx, speaker, role, start, end, text,
-                                     confidence, uncertain, crosstalk)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                                     confidence, uncertain, crosstalk, prosody)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (call_id, idx, seg["speaker"], seg["role"], seg["start"], seg["end"],
              seg["text"], seg.get("confidence"), int(bool(seg.get("uncertain"))),
-             int(bool(seg.get("crosstalk")))),
+             int(bool(seg.get("crosstalk"))), json.dumps(seg.get("prosody")) if seg.get("prosody") else None),
         )
         seg_id = cur.lastrowid
         conn.executemany(
@@ -235,6 +236,17 @@ def save_transcript(call_id: str, segments: list[dict]):
             (seg["text"], call_id, seg_id),
         )
     conn.commit()
+
+
+def save_prosody(call_id: str, summary: dict):
+    conn = connect()
+    conn.execute("UPDATE calls SET prosody=? WHERE id=?", (json.dumps(summary), call_id))
+    conn.commit()
+
+
+def get_prosody(call_id: str) -> dict | None:
+    row = connect().execute("SELECT prosody FROM calls WHERE id=?", (call_id,)).fetchone()
+    return json.loads(row["prosody"]) if row and row["prosody"] else None
 
 
 def save_reliability(call_id: str, summary: dict):
@@ -318,6 +330,7 @@ def get_transcript(call_id: str) -> list[dict]:
             "confidence": s["confidence"],
             "uncertain": bool(s["uncertain"]),
             "crosstalk": bool(s["crosstalk"]),
+            "prosody": json.loads(s["prosody"]) if s["prosody"] else None,
             "words": by_seg.get(s["id"], []),
         }
         for s in segs

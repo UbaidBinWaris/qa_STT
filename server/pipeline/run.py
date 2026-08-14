@@ -2,7 +2,7 @@ import logging
 import os
 
 import db
-from pipeline import align, asr, audio, diarize, metrics, qa, recover, reliability, verify
+from pipeline import align, asr, audio, diarize, metrics, prosody, qa, recover, reliability, verify
 
 logger = logging.getLogger("pipeline.run")
 
@@ -57,6 +57,8 @@ def process(call_id: str):
     # possibly incomplete rather than quietly treated as everything that was said.
     recover.mark_crosstalk(segments, recovery["crosstalk_regions"])
 
+    tone = prosody.analyse(segments, wav)
+
     db.set_progress(call_id, "analyzing", 75)
     interruptions = recover.interruption_events(turns)
     stats = metrics.compute(segments, duration, interruptions)
@@ -76,6 +78,7 @@ def process(call_id: str):
     db.save_transcript(call_id, segments)
     db.save_metrics(call_id, stats)
     db.save_reliability(call_id, report)
+    db.save_prosody(call_id, tone)
     if result:
         db.save_qa(call_id, result)
     db.set_completed(call_id)

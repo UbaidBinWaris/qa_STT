@@ -207,6 +207,7 @@ blockquote { font-size: 13px; color: var(--text-secondary); font-style: italic; 
     font-style: italic;
 }
 .turn-crosstalk .speaker { color: var(--danger); }
+.tone-chip { background: rgba(59,130,246,.15); color: var(--accent-blue); border: 1px solid rgba(59,130,246,.35); }
 .turn-uncertain { border-left-color: var(--warn); }
 .warn-chip { background: rgba(245, 158, 11, .15); color: var(--warn); border: 1px solid rgba(245,158,11,.35); }
 .reliability-good { color: var(--accent); border: 1px solid rgba(118,185,0,.4); }

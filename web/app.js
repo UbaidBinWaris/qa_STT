@@ -296,6 +296,7 @@ function renderTranscript(segments, crosstalk = []) {
                 <span class="speaker">${escapeHtml(seg.role)}</span>
                 ${seg.crosstalk ? '<span class="chip warn-chip" title="Both speakers talking at once \u2014 words may be missing from this turn">\u26a0 cross-talk, may be incomplete</span>' : ""}
                 ${seg.uncertain && !seg.crosstalk ? '<span class="chip warn-chip" title="Some words in this turn are uncertain">\u26a0 check audio</span>' : ""}
+                ${seg.prosody?.tone === "elevated" ? `<span class="chip tone-chip" title="Pitch and loudness rose above this speaker\'s own baseline \u2014 tone, not words">\ud83d\udd0a raised tone</span>` : ""}
                 <span class="ts">${fmtTime(seg.start)}</span>
             </div>
             <div class="turn-text">${words}</div>`;

@@ -46,6 +46,7 @@ For every recording, the system answers the questions a QA reviewer would ask:
 | Who spoke, and when? | Sortformer diarization → Agent / Customer roles |
 | What exactly was said? | Parakeet TDT v3, word-level timestamps |
 | Who dominated the call? | Talk ratio, interruptions, overlap, dead air, words per minute |
+| Did their tone shift? | Pitch/loudness arousal relative to the speaker's own baseline |
 | Did the customer show intent? | LLM scorecard with quoted evidence |
 | Was the script followed? | Identity verification and disclosure checks |
 | Were there TCPA issues? | Compliance findings, each tied to a timestamp |
@@ -125,7 +126,7 @@ Measured on an **RTX 5070 Ti (16 GB, Blackwell)** with 8 kHz mono telephony reco
 | Transcription | 61 s call in **1.6 s** — ≈38× realtime |
 | Diarization | 173 s call in **0.8 s** |
 | Full pipeline incl. QA | 105 s call in **8 s** |
-| Sustained throughput | 171 min of audio in 9.0 min — **≈19× realtime** (with recovery and second-pass verification) |
+| Sustained throughput | 108 min of audio in 6.6 min — **≈16× realtime** (recovery, verification, prosody all on) |
 | Longest tested call | 20.7 min → 197 turns, 2 809 words |
 | Server start (warm) | **25 s** |
 | VRAM, idle | **3.3 GB** (speech models resident) |
@@ -634,6 +635,26 @@ mean volume, which makes the quiet cases the normal ones rather than the edge.
 An earlier version of this document rejected normalisation outright, on the strength of
 confidence scores rather than error rates. That was the wrong instrument: confidence fell while
 accuracy improved. Disable with `AUDIO_NORMALISE=0`.
+
+### Vocal tone, independent of the words
+
+QA sentiment comes from an LLM reading transcribed text, and text cannot hear a raised voice —
+"yeah, fine" and a sharp, fast "yeah, FINE" transcribe identically. Prosody closes that gap:
+pitch range, loudness and speaking rate are measured directly from each turn's audio.
+
+Validated on three calls before being wired in. Median pitch separated speakers by register as
+expected (roughly 130–270 Hz depending on the person), and the turns scored highest for arousal
+were plausible tension — a customer's flat "Do what?", an agent asking someone to repeat
+themselves — while the lowest were curt, low-effort answers ("Correct.", "Hello.").
+
+Arousal is measured against each speaker's own baseline for the call, not a fixed threshold, so
+a naturally loud or high-pitched talker is not flagged for being themselves. A turn needs at
+least 4 turns of history for that baseline to mean anything; shorter calls get pitch and loudness
+without an arousal verdict.
+
+This is a signal, not a verdict — shown in the UI as a "raised tone" chip, not folded into the QA
+score. Cost: roughly 15% of throughput (18.9× → 16.2× realtime), confirmed with the same
+full-corpus soak used elsewhere in this document.
 
 ### Second-pass verification
 
