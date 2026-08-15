@@ -74,7 +74,11 @@ def _diarize_chunked(wav_path: str, duration: float) -> list[dict]:
     import soundfile as sf
 
     sr = sf.info(wav_path).samplerate
-    tmp_dir = os.path.join(os.path.dirname(wav_path), "_diar_chunks")
+    # Per-call subdirectory: with multiple GPU workers, two jobs can be in
+    # this function at once, and a shared "_diar_chunks" directory let one job's
+    # cleanup delete a file the other job still had open.
+    call_tag = os.path.splitext(os.path.basename(wav_path))[0]
+    tmp_dir = os.path.join(os.path.dirname(wav_path), "_diar_chunks", call_tag)
     os.makedirs(tmp_dir, exist_ok=True)
 
     turns: list[dict] = []

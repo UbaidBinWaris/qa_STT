@@ -117,7 +117,11 @@ def verify_spans(wav_path: str, spans: list[dict], words: list[dict] | None = No
         # Never silently cover less than the caller thinks.
         logger.warning(f"{len(spans)} spans flagged; verifying the first {MAX_SPANS}.")
 
-    tmp_dir = os.path.join(os.path.dirname(wav_path), "_verify")
+    # Per-call subdirectory: with multiple GPU workers, two jobs can be in
+    # this function at once, and a shared "_verify" directory let one job's
+    # cleanup delete a file the other job still had open.
+    call_tag = os.path.splitext(os.path.basename(wav_path))[0]
+    tmp_dir = os.path.join(os.path.dirname(wav_path), "_verify", call_tag)
     os.makedirs(tmp_dir, exist_ok=True)
     clips = []
 

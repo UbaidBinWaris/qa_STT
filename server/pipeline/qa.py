@@ -2,10 +2,19 @@ import json
 import re
 import logging
 import os
+import threading
 
 import requests
 
 logger = logging.getLogger("pipeline.qa")
+
+# With keep_alive=0, Ollama loads Qwen3 8B fresh for every call and drops it
+# straight after. Two jobs calling concurrently would each trigger a load —
+# roughly 7 GB apiece on top of whatever the speech models already hold, which
+# measured out to a 12.6 GB peak for ONE job. A second concurrent load does not
+# fit in 16 GB. This lock is what makes a multi-worker queue safe: only one job
+# may have the LLM loaded at a time, no matter how many workers exist.
+_llm_lock = threading.Lock()
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 QA_MODEL = os.environ.get("QA_MODEL", "qwen3:8b")
@@ -111,22 +120,23 @@ def format_transcript(segments: list[dict]) -> str:
 
 
 def _call_ollama(prompt: str) -> dict:
-    resp = requests.post(
-        f"{OLLAMA_URL}/api/generate",
-        json={
-            "model": QA_MODEL,
-            "prompt": prompt,
-            "stream": False,
-            "format": SCHEMA,
-            "think": False,
-            # Release the LLM's VRAM as soon as QA finishes. The speech models stay
-            # resident, and on a 16 GB card an idle 7 GB LLM starves ASR of the
-            # activation memory a long call needs.
-            "keep_alive": 0,
-            "options": {"temperature": 0.2, "num_ctx": 16384},
-        },
-        timeout=TIMEOUT,
-    )
+    with _llm_lock:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": QA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "format": SCHEMA,
+                "think": False,
+                # Release the LLM's VRAM as soon as QA finishes. The speech models
+                # stay resident, and on a 16 GB card an idle 7 GB LLM starves ASR
+                # of the activation memory a long call needs.
+                "keep_alive": 0,
+                "options": {"temperature": 0.2, "num_ctx": 16384},
+            },
+            timeout=TIMEOUT,
+        )
     resp.raise_for_status()
     return json.loads(resp.json()["response"])
 

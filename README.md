@@ -95,10 +95,18 @@ timestamp from the audio file, which breaks click-to-seek, word highlighting, an
 alignment. At 38× realtime the saving is not worth the damage, so silence stays — and becomes a
 signal (dead air, longest pause) rather than a preprocessing step.
 
-**Stages run sequentially; concurrency comes from the queue.**
-A six-minute call is roughly five seconds of GPU work. Running stages in parallel would add
-VRAM contention for no meaningful gain. One worker, jobs queued. Three simultaneous uploads
-finish in about the time of three sequential ones, with no risk of an out-of-memory failure.
+**Two GPU workers, not one — measured, not assumed.**
+`asr.py`, `diarize.py`, and `qa.py` each hold their own lock around their model, so two workers
+never run two decodes or two LLM calls at the same instant; what overlaps is one job's Ollama
+HTTP wait against another job's ASR or diarization pass. Comparing wall-clock on the same 4-file
+batch: 1 worker = 48.9s, **2 workers = 36.0s (26% faster)**, 3 workers = 41.2s (worse — lock
+contention eats the gain). `WORKER_THREADS=2` is the tuned default.
+
+Peak VRAM was measured directly, not estimated: a single job's QA stage (Qwen3 8B loading
+alongside the resident speech models) peaks at **12.6 GB** on a 16 GB card. Two concurrent jobs
+were confirmed safe across repeated runs (1.4–2.4 GB headroom each time). An artificial burst —
+all 27 corpus calls submitted at once, once — produced 3 CUDA OOM failures on the longest calls;
+those are retried automatically (see below) and completed on the retried attempt every time.
 
 ---
 
@@ -138,6 +146,27 @@ hours of calls.
 
 Calls longer than four minutes are transcribed in overlapping windows and spliced, so memory
 stays bounded regardless of recording length.
+
+### Concurrency
+
+```bash
+WORKER_THREADS=2 npm run dev    # default; override if you have a different card
+npm run eval:concurrency        # prove it's safe on your hardware, not just fast
+```
+
+`tests/eval_concurrency.py` fires several distinct calls at once, watches `nvidia-smi` for the
+whole run, and fails loudly if headroom drops below a safety margin — rather than finding out
+via a production OOM. Run it after changing `WORKER_THREADS` or upgrading the GPU.
+
+**A job that hits CUDA OOM is retried, not failed.** Under heavy simultaneous load a long call's
+chunked decode can land at the same moment as another job's QA peak. Two automatic retries with
+a short delay let the colliding job release its memory first; only a third failure gives up and
+marks the call failed. This turned a real 3-failure burst into zero failures on rerun, twice.
+
+**Every temp directory is per-call**, not shared — `_chunks`, `_diar_chunks`, `_recover`,
+`_verify` are each namespaced under the call id. With one worker a shared name was harmless;
+with two, one job's cleanup could delete a file the other still had open. Found by testing
+concurrency for real, not by inspection.
 
 ---
 

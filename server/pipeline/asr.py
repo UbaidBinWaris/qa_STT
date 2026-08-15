@@ -201,7 +201,11 @@ def _transcribe_chunked(wav_path: str) -> list[dict]:
     info = sf.info(wav_path)
     sr, duration = info.samplerate, info.frames / info.samplerate
 
-    tmp_dir = os.path.join(os.path.dirname(wav_path), "_chunks")
+    # Per-call subdirectory: with multiple GPU workers, two jobs can be in
+    # this function at once, and a shared "_chunks" directory let one job's
+    # cleanup delete a file the other job still had open.
+    call_tag = os.path.splitext(os.path.basename(wav_path))[0]
+    tmp_dir = os.path.join(os.path.dirname(wav_path), "_chunks", call_tag)
     os.makedirs(tmp_dir, exist_ok=True)
 
     words: list[dict] = []

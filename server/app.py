@@ -107,6 +107,8 @@ def health():
         if torch.cuda.is_available()
         else 0,
         "queue_depth": jobs.depth(),
+        "active_jobs": jobs.active(),
+        "worker_threads": jobs.WORKER_THREADS,
         "warmup": getattr(app.state, "warmup", None),
     }
 

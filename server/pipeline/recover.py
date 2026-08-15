@@ -122,7 +122,11 @@ def recover_dropped(wav_path: str, words: list[dict], turns: list[dict]) -> dict
     if len(empty) > MAX_ATTEMPTS:
         logger.warning(f"{len(empty)} empty turns; attempting the first {MAX_ATTEMPTS}.")
 
-    tmp_dir = os.path.join(os.path.dirname(wav_path), "_recover")
+    # Per-call subdirectory: with multiple GPU workers, two jobs can be in
+    # this function at once, and a shared "_recover" directory let one job's
+    # cleanup delete a file the other job still had open.
+    call_tag = os.path.splitext(os.path.basename(wav_path))[0]
+    tmp_dir = os.path.join(os.path.dirname(wav_path), "_recover", call_tag)
     os.makedirs(tmp_dir, exist_ok=True)
     made = []
     try:

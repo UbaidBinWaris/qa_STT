@@ -11,7 +11,8 @@
     "tunnel:cf": "python3 server/tunnel_cf.py",
     "tunnel:ngrok": "python3 server/tunnel.py",
     "test": "server/venv/bin/python tests/run.py",
-    "eval": "server/venv/bin/python tests/eval_robustness.py"
+    "eval": "server/venv/bin/python tests/eval_robustness.py",
+    "eval:concurrency": "server/venv/bin/python tests/eval_concurrency.py"
   },
   "keywords": [
     "speech-to-text",
