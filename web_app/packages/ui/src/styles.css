@@ -1,0 +1,202 @@
+/* ASCRAS shared styles.
+ *
+ * Colour only ever comes from the custom properties ThemeProvider sets, so a
+ * component is written once and works in both themes. Semantic colours
+ * (--verified, --uncertain, --conflict) are reserved for meaning and must never
+ * be used decoratively. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+a {
+  color: var(--brand);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.ascras-shell {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.ascras-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  margin-bottom: 20px;
+}
+
+.ascras-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.ascras-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ascras-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.ascras-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.ascras-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.ascras-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ascras-btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.ascras-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--canvas);
+  color: var(--text);
+  font-size: 14px;
+}
+.ascras-input:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.ascras-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.ascras-theme-toggle {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.ascras-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.ascras-table th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.ascras-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.ascras-table tr:last-child td {
+  border-bottom: none;
+}
+
+.ascras-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
+}
+/* Semantic — meaning, not decoration. */
+.chip-verified {
+  color: var(--verified);
+  border-color: color-mix(in srgb, var(--verified) 40%, transparent);
+  background: color-mix(in srgb, var(--verified) 12%, transparent);
+}
+.chip-uncertain {
+  color: var(--uncertain);
+  border-color: color-mix(in srgb, var(--uncertain) 40%, transparent);
+  background: color-mix(in srgb, var(--uncertain) 12%, transparent);
+}
+.chip-conflict {
+  color: var(--conflict);
+  border-color: color-mix(in srgb, var(--conflict) 40%, transparent);
+  background: color-mix(in srgb, var(--conflict) 12%, transparent);
+}
+.chip-info {
+  color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 40%, transparent);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+}
+
+.ascras-muted {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.ascras-error {
+  color: var(--conflict);
+  font-size: 13px;
+}
+.ascras-grid {
+  display: grid;
+  gap: 16px;
+}

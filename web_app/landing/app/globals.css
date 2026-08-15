@@ -1,0 +1,135 @@
+.hero {
+  padding: 64px 0 40px;
+  max-width: 780px;
+}
+.eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand);
+  margin: 0 0 14px;
+}
+.hero h1 {
+  font-size: clamp(38px, 6vw, 62px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0 0 20px;
+}
+.grad {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lede {
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--text-muted);
+  margin: 0 0 28px;
+}
+.cta-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin: 20px 0 8px;
+}
+.stat-value {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--brand);
+}
+
+.section {
+  padding: 56px 0;
+}
+.section h2 {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  margin: 0 0 22px;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 16px;
+}
+.cards h3 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+.cards p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+.steps li {
+  position: relative;
+  padding: 16px 16px 16px 56px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  line-height: 1.6;
+}
+.steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--brand-wash);
+  color: var(--brand);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.contact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.contact:hover {
+  border-color: var(--brand);
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 26px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}

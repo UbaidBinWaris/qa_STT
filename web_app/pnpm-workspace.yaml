@@ -1,0 +1,27 @@
+packages:
+  - "landing"
+  - "portal"
+  - "admin"
+  - "backend"
+  - "packages/*"
+
+allowBuilds:
+  # Prisma downloads its query engine binary in a postinstall step. Blocked, the
+  # client generates but every query fails at runtime with a missing engine.
+  '@prisma/engines': true
+  # argon2 compiles a native binding. Unbuilt, password hashing throws at
+  # runtime — which would only surface on the first login attempt.
+  argon2: true
+  prisma: true
+  # eslint's resolver ships a native binary; without this its postinstall is
+  # skipped and linting fails to resolve imports.
+  unrs-resolver: true
+
+# NestJS and Next both compile native/postinstall deps; pnpm blocks those by
+# default and the builds fail silently without this.
+onlyBuiltDependencies:
+  - "@nestjs/core"
+  - "@tailwindcss/oxide"
+  - "sharp"
+  - "unrs-resolver"
+  - "esbuild"

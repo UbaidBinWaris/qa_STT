@@ -1,0 +1,169 @@
+.login-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.login-card {
+  width: min(380px, 100%);
+}
+
+.upload-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.score-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+}
+.score-badge strong {
+  font-size: 26px;
+  color: var(--brand);
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.turn {
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  background: var(--canvas);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+.turn:hover {
+  border-color: var(--border-strong);
+}
+.turn-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.role-agent {
+  color: var(--verified);
+  font-weight: 600;
+}
+.role-customer {
+  color: var(--info);
+  font-weight: 600;
+}
+.turn-uncertain {
+  border-left-color: var(--uncertain);
+}
+.turn-crosstalk {
+  border-left-color: var(--conflict);
+  background: color-mix(in srgb, var(--conflict) 7%, var(--canvas));
+}
+
+/* Word-level marking. These three states are the whole point of the product:
+   a reviewer must be able to see which words were trusted, which were doubted,
+   and which two decoders disagreed about. */
+.w-uncertain {
+  border-bottom: 2px dotted var(--uncertain);
+  cursor: help;
+}
+.w-conflict {
+  background: color-mix(in srgb, var(--conflict) 18%, transparent);
+  border-bottom: 2px solid var(--conflict);
+  border-radius: 3px;
+  cursor: help;
+}
+.w-recovered {
+  border-bottom: 2px dashed var(--info);
+  cursor: help;
+}
+
+.finding {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--canvas);
+  border-left: 3px solid var(--border-strong);
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.finding blockquote {
+  margin: 8px 0 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.panel-h {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+.bar {
+  display: flex;
+  height: 34px;
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+}
+.bar-agent,
+.bar-cust {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  white-space: nowrap;
+}
+.bar-agent {
+  background: var(--brand);
+}
+.bar-cust {
+  background: var(--info);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.section-h {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}

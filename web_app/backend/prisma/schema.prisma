@@ -1,0 +1,235 @@
+// ASCRAS — Automated Sales Call Review and Analysis System
+//
+// Shape of the business, as specified:
+//   - No self-serve signup. An admin creates the account and hands credentials
+//     over by WhatsApp/Discord/Telegram. The portal is login-only.
+//   - Work is done by a "bot": an admin-configured worker allocated to a client,
+//     with limits on how much it may process and when it may run.
+//   - Payments are recorded by hand. No payment processor is integrated, and
+//     none of these fields talk to one.
+//
+// The Python GPU worker has no credentials for this database by design. It
+// reports progress to NestJS over HTTP and NestJS is the only writer, so the GPU
+// box can be restarted or replaced without touching Postgres.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  CLIENT
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  role         UserRole   @default(CLIENT)
+  status       UserStatus @default(ACTIVE)
+
+  // How this client prefers to be reached, since credentials and results are
+  // handed over personally rather than emailed by the system.
+  contactChannel String? // whatsapp | discord | telegram
+  contactHandle  String?
+
+  bots     Bot[]
+  calls    Call[]
+  payments Payment[]
+  sessions Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+enum BotStatus {
+  ENABLED
+  DISABLED
+}
+
+/// A bot is the unit the admin configures, limits and hands to a client.
+/// Quota lives here rather than on the user, because a client may be given more
+/// or less capacity without touching their account.
+model Bot {
+  id     String    @id @default(cuid())
+  name   String
+  status BotStatus @default(DISABLED)
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Quota. Null means unlimited — deliberate, so an internal or trial bot can be
+  // left uncapped without inventing a sentinel number.
+  dailyCallLimit  Int?
+  dailyMinuteLimit Int?
+
+  // Optional daily window, minutes from midnight in the bot's timezone. Lets a
+  // client's processing be confined to off-hours so the single GPU is not
+  // contended during their own working day.
+  windowStartMinute Int?
+  windowEndMinute   Int?
+  timezone          String @default("UTC")
+
+  // What this bot is actually allowed to do, so capability can be granted per
+  // client without a code change.
+  canTranscribe Boolean @default(true)
+  canRunQa      Boolean @default(true)
+  canExport     Boolean @default(false)
+
+  calls Call[]
+  usage BotUsage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
+  /// Lets Call reference (botId, ownerId) as a composite foreign key, so the
+  /// database itself refuses to attach a recording to a bot owned by someone
+  /// else. Without this, only application code stands between a bug and one
+  /// client's call appearing under another client's bot.
+  @@unique([id, ownerId])
+}
+
+/// One row per bot per day. Counters are incremented as work completes, so a
+/// limit check is a single indexed read rather than an aggregate over calls.
+model BotUsage {
+  id    String   @id @default(cuid())
+  botId String
+  bot   Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  day   DateTime @db.Date
+
+  callsProcessed Int @default(0)
+  minutesProcessed Int @default(0)
+
+  @@unique([botId, day])
+  @@index([day])
+}
+
+enum CallStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Call {
+  id       String     @id @default(cuid())
+  ownerId  String
+  owner    User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  botId    String?
+  /// Composite reference: a call's bot must belong to the call's owner. Enforced
+  /// by Postgres, not by trust.
+  ///
+  /// Restrict, not SetNull: a bot that has processed calls cannot be deleted out
+  /// from under them — the record of which bot handled which recording is part of
+  /// the audit trail. Retire a bot by setting status DISABLED instead.
+  bot      Bot?       @relation(fields: [botId, ownerId], references: [id, ownerId], onDelete: Restrict)
+
+  filename        String
+  durationSeconds Float?
+  sizeBytes       Int?
+  /// Content hash. The upload path already dedupes on this, so the same
+  /// recording submitted twice returns the original instead of burning quota.
+  sha256          String?
+
+  /// Object storage keys. Audio lives in MinIO, never in Postgres.
+  originalKey String? // recordings/<id>/original.<ext>
+  audioKey    String? // derived/<id>/audio.wav
+
+  status   CallStatus @default(QUEUED)
+  stage    String?
+  progress Int        @default(0)
+  error    String?
+
+  /// QA score 0-100, and how much the transcript beneath it can be trusted.
+  /// Kept separate on purpose: a confident verdict over a doubtful transcript
+  /// is exactly the failure this system exists to make visible.
+  score            Int?
+  reliabilityScore Float?
+
+  transcript Json?
+  metrics    Json?
+  qa         Json?
+  reliability Json?
+  prosody    Json?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([ownerId, createdAt])
+  @@index([botId, createdAt])
+  @@index([status])
+  /// Deduplication is per owner: two clients uploading the same audio each get
+  /// their own call, but one client re-uploading their own file does not.
+  @@unique([ownerId, sha256])
+}
+
+enum PaymentStatus {
+  RECORDED
+  REFUNDED
+}
+
+/// Payments are entered by an admin from whatever happened outside the system —
+/// bank transfer, cash, Wise, anything. There is no processor integration and
+/// no automated charging; this is a ledger, not a checkout.
+model Payment {
+  id     String        @id @default(cuid())
+  userId String
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status PaymentStatus @default(RECORDED)
+
+  amount   Decimal @db.Decimal(12, 2)
+  currency String  @default("USD")
+  method   String? // bank transfer | wise | cash | other
+  reference String? // whatever identifier the client gave
+
+  /// What the money bought, in the admin's own words.
+  note        String?
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  recordedById String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// Who did what. Accounts are provisioned by hand and payments recorded by hand,
+/// so the audit trail is the only record of an administrative action.
+model AuditLog {
+  id       String   @id @default(cuid())
+  actorId  String?
+  action   String
+  target   String?
+  metadata Json?
+  ip       String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+}

@@ -83,6 +83,15 @@ async def middleware(request: Request, call_next):
     if path in PUBLIC_PATHS or path.startswith("/static/"):
         return await call_next(request)
 
+    # Machine routes carry a shared secret instead of a session: the NestJS
+    # backend is a server, not a browser, and holds no user credentials. The
+    # secret is verified inside each handler — this only lets the request past
+    # the browser session gate.
+    if path in ("/api/jobs", "/api/worker/health") and request.headers.get(
+        "x-worker-secret"
+    ):
+        return await call_next(request)
+
     if valid_session(request.cookies.get(COOKIE)):
         return await call_next(request)
 

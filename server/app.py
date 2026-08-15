@@ -8,7 +8,9 @@ os.environ.setdefault("HF_HOME", _CACHE)
 os.environ.setdefault("TORCH_HOME", _CACHE)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-from fastapi import Body, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    Body, FastAPI, File, Header, HTTPException, Request, Response, UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +26,8 @@ import jobs  # noqa: E402
 import security  # noqa: E402
 import uploads  # noqa: E402
 import warmup  # noqa: E402
+import worker_api  # noqa: E402
+import worker_jobs  # noqa: E402
 from pipeline import asr, diarize, qa, waveform  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -57,6 +61,7 @@ async def startup():
     db.reset_stuck_jobs()
     uploads.cleanup_incoming()
     jobs.start()
+    worker_jobs.start()
     asyncio.create_task(clean_uploads.start_cleaner_task())
 
     loop = asyncio.get_event_loop()
@@ -110,6 +115,50 @@ def health():
         "active_jobs": jobs.active(),
         "worker_threads": jobs.WORKER_THREADS,
         "warmup": getattr(app.state, "warmup", None),
+    }
+
+
+@app.post("/api/jobs")
+def accept_remote_job(
+    request: Request,
+    payload: dict = Body(...),
+    x_worker_secret: str | None = Header(default=None),
+):
+    """Accept a job from the NestJS backend.
+
+    Authenticated by shared secret: the caller is a server, not a person, so it
+    holds no session. The recording is fetched from object storage rather than
+    uploaded here, and results are posted back — this process never writes to
+    Postgres.
+    """
+    if not worker_api.secret_ok(x_worker_secret):
+        raise HTTPException(401, "Bad worker secret")
+    for field in ("callId", "objectKey"):
+        if not payload.get(field):
+            raise HTTPException(400, f"{field} is required")
+
+    depth = worker_jobs.submit(payload)
+    logger.info(f"accepted remote job {payload['callId']} (queue depth {depth})")
+    return {"accepted": True, "callId": payload["callId"], "queueDepth": depth}
+
+
+@app.get("/api/worker/health")
+def worker_health(x_worker_secret: str | None = Header(default=None)):
+    """Liveness for the NestJS backend. Secret-authenticated so the GPU box does
+    not expose its state to anyone who can reach the port."""
+    if not worker_api.secret_ok(x_worker_secret):
+        raise HTTPException(401, "Bad worker secret")
+    import torch
+
+    return {
+        "status": "healthy",
+        "remoteQueueDepth": worker_jobs.depth(),
+        "localQueueDepth": jobs.depth(),
+        "activeJobs": jobs.active(),
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "vramUsedGb": round(torch.cuda.memory_allocated() / 1e9, 2)
+        if torch.cuda.is_available()
+        else 0,
     }
 
 
