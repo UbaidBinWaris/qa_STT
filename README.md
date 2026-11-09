@@ -10,6 +10,8 @@ objections, sentiment, and coaching.
 
 Everything runs on one workstation. No cloud, no API keys, no customer data leaving the office.
 
+[Case study](https://ubaidbinwaris.com/work/sales-call-intelligence) · Built by [Ubaid Bin Waris](https://ubaidbinwaris.com) · MIT licensed
+
 </div>
 
 ---
@@ -187,7 +189,7 @@ The architecture is GPU-agnostic. On slower hardware jobs simply spend longer in
 ## Installation
 
 ```bash
-git clone <repository-url> && cd qa_STT
+git clone https://github.com/UbaidBinWaris/qa_STT.git && cd qa_STT
 ollama pull qwen3:8b
 npm run dev
 ```
@@ -795,4 +797,18 @@ Hard-refresh (Ctrl-Shift-R). Browsers cache `app.js` and `login.html` aggressive
 
 ## License
 
-MIT
+The code is MIT licensed; see [LICENSE](LICENSE).
+
+### Model licenses
+
+The models are downloaded at runtime and keep their own licenses:
+
+| Model | License |
+|---|---|
+| `nvidia/parakeet-tdt-0.6b-v3` | CC-BY-4.0 |
+| `nvidia/diar_sortformer_4spk-v1` (default `DIAR_MODEL`) | **CC-BY-NC-4.0, non-commercial use only** |
+| `qwen3:8b` | Apache-2.0 |
+
+For commercial use, set `DIAR_MODEL` to a diarization model whose license allows it,
+such as `nvidia/diar_streaming_sortformer_4spk-v2` (CC-BY-4.0). That model has not been
+benchmarked in this pipeline yet.
